@@ -86,7 +86,7 @@ function Register() {
   const submitStep2 = async () => {
     if (!sellerId) return;
     setBusy(true);
-    const updates: Record<string, string> = {};
+    const updates: { profile_photo_url?: string; cover_photo_url?: string } = {};
     if (profileFile) { const url = await uploadImage(profileFile, "profile"); if (url) updates.profile_photo_url = url; }
     if (coverFile) { const url = await uploadImage(coverFile, "cover"); if (url) updates.cover_photo_url = url; }
     if (Object.keys(updates).length) {
