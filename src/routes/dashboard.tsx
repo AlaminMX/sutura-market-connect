@@ -67,7 +67,9 @@ function Dashboard() {
   const saveProfile = async () => {
     if (!seller) return;
     setSaving(true);
-    const updates: Record<string, string> = { bio, whatsapp_number: whatsapp };
+    const updates: { bio: string; whatsapp_number: string; profile_photo_url?: string; cover_photo_url?: string } = {
+      bio, whatsapp_number: whatsapp,
+    };
     if (profileFile) { const url = await uploadImage(profileFile, "profile"); if (url) updates.profile_photo_url = url; }
     if (coverFile) { const url = await uploadImage(coverFile, "cover"); if (url) updates.cover_photo_url = url; }
     const { error } = await supabase.from("sellers").update(updates).eq("id", seller.id);
