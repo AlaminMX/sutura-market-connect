@@ -10,8 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { slugify } from "@/lib/whatsapp";
 import { Check, Copy, Share2 } from "lucide-react";
-
-const CITIES = ["Kano", "Kaduna", "Abuja", "Other"];
+import { NIGERIAN_CITIES } from "@/lib/categories";
 
 export const Route = createFileRoute("/register")({ component: Register });
 
@@ -28,6 +27,7 @@ function Register() {
   const [businessName, setBusinessName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [city, setCity] = useState("");
+  const [otherCity, setOtherCity] = useState("");
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
 

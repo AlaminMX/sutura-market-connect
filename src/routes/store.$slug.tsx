@@ -67,7 +67,6 @@ function StorePage() {
     </div>
   );
 
-  const completeness = [seller.profile_photo_url, seller.cover_photo_url, seller.bio, (products?.length ?? 0) > 0].filter(Boolean).length * 25;
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/store/${seller.slug}` : "";
 
   const handleShare = async () => {
@@ -90,62 +89,60 @@ function StorePage() {
   const waUrl = buildWhatsAppUrl(seller.whatsapp_number);
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-32">
       <TopBar />
 
-      {/* Cover */}
-      <div className="relative h-44 bg-gradient-to-br from-secondary via-rose to-primary/30 sm:h-56">
-        {seller.cover_photo_url && <img src={seller.cover_photo_url} alt="" className="h-full w-full object-cover" />}
+      {/* Immersive cover */}
+      <div className="relative h-56 w-full overflow-hidden bg-gradient-to-br from-secondary via-rose to-primary/30 sm:h-72">
+        {seller.cover_photo_url && (
+          <img src={seller.cover_photo_url} alt="" className="h-full w-full object-cover" />
+        )}
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
       </div>
 
       <div className="mx-auto max-w-3xl px-5">
-        <div className="-mt-12 flex items-end gap-4">
-          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-4 border-background bg-secondary shadow-warm-lg">
+        {/* Profile overlapping cover */}
+        <div className="-mt-16 flex items-end gap-4">
+          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-background bg-secondary shadow-warm-lg ring-1 ring-primary/10">
             {seller.profile_photo_url ? (
               <img src={seller.profile_photo_url} alt={seller.business_name} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center font-serif text-3xl text-primary">
+              <div className="flex h-full w-full items-center justify-center font-serif text-4xl text-primary">
                 {seller.business_name.charAt(0)}
               </div>
             )}
           </div>
         </div>
 
-        <div className="mt-4">
+        {/* Header */}
+        <div className="mt-5">
           <div className="flex items-start gap-2">
-            <h1 className="font-serif text-3xl leading-tight">{seller.business_name}</h1>
+            <h1 className="font-serif text-3xl leading-tight sm:text-4xl">{seller.business_name}</h1>
             {seller.is_verified && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <BadgeCheck className="mt-1 h-6 w-6 text-primary" />
+                    <BadgeCheck className="mt-1.5 h-6 w-6 text-primary" />
                   </TooltipTrigger>
                   <TooltipContent>Vouched for by {vouchCount ?? 2}+ sellers in this community</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
           </div>
-          {seller.bio && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{seller.bio}</p>}
+
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-secondary px-3 py-1 text-secondary-foreground">{seller.category}</span>
+            <span className="rounded-full bg-secondary px-3 py-1 font-medium text-secondary-foreground">{seller.category}</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-muted-foreground">
               <MapPin className="h-3 w-3" />{seller.city}
             </span>
           </div>
 
-          {/* Completeness bar */}
-          <div className="mt-5">
-            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>Profile completeness</span><span>{completeness}%</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completeness}%` }} />
-            </div>
-          </div>
+          {seller.bio && <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{seller.bio}</p>}
 
-          <div className="mt-5 flex gap-2">
+          {/* Actions */}
+          <div className="mt-6 flex gap-2">
             <Button onClick={handleShare} variant="outline" className="flex-1 rounded-full">
-              <Share2 className="mr-1.5 h-4 w-4" /> Share My Store
+              <Share2 className="mr-1.5 h-4 w-4" /> Share store
             </Button>
             {user && mySellerId && mySellerId !== seller.id && (
               <Button onClick={handleVouch} variant="outline" className="rounded-full">
@@ -156,7 +153,12 @@ function StorePage() {
         </div>
 
         {/* Products */}
-        <h2 className="mt-10 mb-4 font-serif text-2xl">Products</h2>
+        <div className="mt-10 mb-4 flex items-end justify-between">
+          <h2 className="font-serif text-2xl">Products</h2>
+          {products && products.length > 0 && (
+            <span className="text-xs text-muted-foreground">{products.length} items</span>
+          )}
+        </div>
         {products && products.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {products.map((p) => (
