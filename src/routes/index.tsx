@@ -7,6 +7,7 @@ import { Footer } from "@/components/Footer";
 import { SellerCard } from "@/components/SellerCard";
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sparkles, Search, MapPin, Store, ArrowRight } from "lucide-react";
 import { hausaFor, iconFor, NIGERIAN_CITIES } from "@/lib/categories";
@@ -34,7 +35,7 @@ function Index() {
   const [q, setQ] = useState("");
   const [city, setCity] = useState<string>("All cities");
 
-  const { data: categories } = useQuery({
+  const { data: categories, isLoading: categoriesLoading } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
       const { data, error } = await supabase.from("categories").select("*").order("sort_order");
@@ -43,7 +44,7 @@ function Index() {
     },
   });
 
-  const { data: featured } = useQuery({
+  const { data: featured, isLoading: sellersLoading } = useQuery({
     queryKey: ["featured-sellers", city],
     queryFn: async () => {
       let qb = supabase
@@ -59,7 +60,7 @@ function Index() {
     },
   });
 
-  const { data: featuredProducts } = useQuery({
+  const { data: featuredProducts, isLoading: productsLoading } = useQuery({
     queryKey: ["featured-products", city],
     queryFn: async () => {
       let qb = supabase
@@ -189,24 +190,31 @@ function Index() {
         </div>
         {/* 3-column grid — no scrolling required */}
         <div className="mx-auto max-w-5xl px-5 grid grid-cols-3 gap-4">
-          {categories?.map((c) => {
-            const { Component: IconComponent } = iconFor(c.name);
-            return (
-              <Link
-                key={c.id}
-                to="/category/$slug"
-                params={{ slug: c.slug }}
-                className="group flex flex-col items-center gap-2.5 rounded-2xl border border-[#F0DDD0] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#FDF3EC] transition-transform duration-200 group-hover:scale-105">
-                  <IconComponent size={56} />
+          {categoriesLoading
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex flex-col items-center gap-2.5 rounded-2xl border border-[#F0DDD0] bg-white p-4">
+                  <Skeleton className="h-20 w-20 rounded-full" />
+                  <Skeleton className="h-3 w-16 rounded" />
                 </div>
-                <span className="text-center text-xs font-semibold leading-tight text-foreground">
-                  {c.name}
-                </span>
-              </Link>
-            );
-          })}
+              ))
+            : categories?.map((c) => {
+                const { Component: IconComponent } = iconFor(c.name);
+                return (
+                  <Link
+                    key={c.id}
+                    to="/category/$slug"
+                    params={{ slug: c.slug }}
+                    className="group flex flex-col items-center gap-2.5 rounded-2xl border border-[#F0DDD0] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#FDF3EC] transition-transform duration-200 group-hover:scale-105">
+                      <IconComponent size={56} />
+                    </div>
+                    <span className="text-center text-xs font-semibold leading-tight text-foreground">
+                      {c.name}
+                    </span>
+                  </Link>
+                );
+              })}
         </div>
       </section>
 
@@ -217,9 +225,22 @@ function Index() {
             <h2 className="font-serif text-2xl">New sellers</h2>
             <p className="text-xs text-muted-foreground">Sababbin masu sayarwa</p>
           </div>
+          <Link to="/sellers" className="text-xs font-medium text-primary underline underline-offset-2">View all sellers</Link>
         </div>
         <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {hasRealSellers
+          {sellersLoading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="w-64 shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-card p-4 shadow-warm">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-14 w-14 shrink-0 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-28 rounded" />
+                      <Skeleton className="h-3 w-20 rounded" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            : hasRealSellers
             ? featured!.map((s, i) => (
                 <div key={s.id} className="card-enter w-72 shrink-0" style={{ animationDelay: `${i * 0.08}s` }}>
                   <SellerCard {...s} />
@@ -257,7 +278,21 @@ function Index() {
           </div>
         </div>
 
-        {hasRealProducts ? (
+        {productsLoading ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-warm">
+                <Skeleton className="aspect-square w-full rounded-none" />
+                <div className="p-3 space-y-2">
+                  <Skeleton className="h-4 w-3/4 rounded" />
+                  <Skeleton className="h-5 w-1/2 rounded" />
+                  <Skeleton className="h-3 w-2/3 rounded" />
+                  <Skeleton className="mt-3 h-8 w-full rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : hasRealProducts ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {featuredProducts!.map((p, i) => {
               const s = (p as any).sellers;
