@@ -171,9 +171,6 @@ function Index() {
                 <ArrowRight className="ml-2 h-4 w-4 transition group-hover:translate-x-0.5" />
               </Button>
             </Link>
-            <a href="#categories" className="text-sm font-medium text-white/90 underline-offset-4 hover:underline">
-              Browse the market
-            </a>
           </div>
         </div>
       </section>
