@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { ProductCard } from "@/components/ProductCard";
+import { BackButton } from "@/components/BackButton";
 import { buildWhatsAppUrl, trackClick } from "@/lib/whatsapp";
 import { BadgeCheck, MapPin, MessageCircle, Share2, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -92,30 +93,60 @@ function StorePage() {
     <div className="min-h-screen bg-background pb-32">
       <TopBar />
 
-      {/* Immersive cover */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Immersive cover banner                                              */}
+      {/* ------------------------------------------------------------------ */}
       <div className="relative h-56 w-full overflow-hidden bg-gradient-to-br from-secondary via-rose to-primary/30 sm:h-72">
         {seller.cover_photo_url && (
           <img src={seller.cover_photo_url} alt="" className="h-full w-full object-cover" />
         )}
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-background" />
+        {/* Gradient fade at bottom so profile blends smoothly */}
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-background" />
+
+        {/* Back button — sits in top-left of cover */}
+        <div className="absolute left-4 top-4 z-10">
+          <BackButton fallback="/" />
+        </div>
       </div>
 
       <div className="mx-auto max-w-3xl px-5">
-        {/* Profile overlapping cover */}
-        <div className="-mt-16 flex items-end gap-4">
-          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-background bg-secondary shadow-warm-lg ring-1 ring-primary/10">
+        {/* ---------------------------------------------------------------- */}
+        {/* Profile picture — overlaps the cover banner from below            */}
+        {/* The negative margin pulls it up; z-10 ensures it sits ON TOP     */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="-mt-14 flex items-end gap-4">
+          <div
+            className={[
+              // Size & shape
+              "relative z-10 h-28 w-28 shrink-0 overflow-hidden rounded-full",
+              // Border: 4px white ring — creates "lifted" effect
+              "border-4 border-background",
+              // Fallback background
+              "bg-secondary",
+              // Elevation: warm shadow + subtle primary ring
+              "shadow-warm-lg ring-2 ring-primary/15",
+              // Smooth transition if image loads late
+              "transition-shadow duration-200",
+            ].join(" ")}
+          >
             {seller.profile_photo_url ? (
-              <img src={seller.profile_photo_url} alt={seller.business_name} className="h-full w-full object-cover" />
+              <img
+                src={seller.profile_photo_url}
+                alt={seller.business_name}
+                className="h-full w-full object-cover"
+              />
             ) : (
-              <div className="flex h-full w-full items-center justify-center font-serif text-4xl text-primary">
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-secondary to-rose/40 font-serif text-4xl text-primary">
                 {seller.business_name.charAt(0)}
               </div>
             )}
           </div>
         </div>
 
-        {/* Header */}
-        <div className="mt-5">
+        {/* ---------------------------------------------------------------- */}
+        {/* Header info                                                       */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="mt-4">
           <div className="flex items-start gap-2">
             <h1 className="font-serif text-3xl leading-tight sm:text-4xl">{seller.business_name}</h1>
             {seller.is_verified && (
