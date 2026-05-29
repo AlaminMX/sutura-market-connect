@@ -30,10 +30,23 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 w-full bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="font-serif text-2xl font-semibold tracking-tight text-primary">Sutura</span>
-          <span className="font-serif text-2xl text-foreground/80">Market</span>
+        {/* Logo: image + stacked SUTURA / MARKET text */}
+        <Link to="/" className="flex items-center gap-2.5">
+          <img
+            src="/sutura-logo.png"
+            alt="Sutura Market"
+            className="h-10 w-10 object-contain"
+          />
+          <div className="flex flex-col leading-none">
+            <span className="font-serif text-lg font-bold tracking-wide text-primary" style={{ letterSpacing: '0.08em' }}>
+              SUTURA
+            </span>
+            <span className="font-serif text-sm font-semibold tracking-widest text-foreground/70" style={{ letterSpacing: '0.15em' }}>
+              MARKET
+            </span>
+          </div>
         </Link>
+
         <div className="flex items-center gap-1">
           <button aria-label="Search" onClick={() => setOpen((v) => !v)} className="rounded-full p-2 hover:bg-muted">
             <Search className="h-5 w-5 text-foreground/70" />
