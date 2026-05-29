@@ -16,6 +16,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as SellersRouteImport } from './routes/sellers'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as StoreSlugRouteImport } from './routes/store.$slug'
 import { Route as CategorySlugRouteImport } from './routes/category.$slug'
@@ -55,6 +56,11 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SellersRoute = SellersRouteImport.update({
+  id: '/sellers',
+  path: '/sellers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/register': typeof RegisterRoute
   '/search': typeof SearchRoute
+  '/sellers': typeof SellersRoute
   '/verified': typeof VerifiedRoute
   '/verify-email': typeof VerifyEmailRoute
   '/category/$slug': typeof CategorySlugRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/register': typeof RegisterRoute
   '/search': typeof SearchRoute
+  '/sellers': typeof SellersRoute
   '/verified': typeof VerifiedRoute
   '/verify-email': typeof VerifyEmailRoute
   '/category/$slug': typeof CategorySlugRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/register': typeof RegisterRoute
   '/search': typeof SearchRoute
+  '/sellers': typeof SellersRoute
   '/verified': typeof VerifiedRoute
   '/verify-email': typeof VerifyEmailRoute
   '/category/$slug': typeof CategorySlugRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/register'
     | '/search'
+    | '/sellers'
     | '/verified'
     | '/verify-email'
     | '/category/$slug'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/register'
     | '/search'
+    | '/sellers'
     | '/verified'
     | '/verify-email'
     | '/category/$slug'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/register'
     | '/search'
+    | '/sellers'
     | '/verified'
     | '/verify-email'
     | '/category/$slug'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   RegisterRoute: typeof RegisterRoute
   SearchRoute: typeof SearchRoute
+  SellersRoute: typeof SellersRoute
   VerifiedRoute: typeof VerifiedRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   CategorySlugRoute: typeof CategorySlugRoute
@@ -174,6 +187,13 @@ declare module '@tanstack/react-router' {
       path: '/verified'
       fullPath: '/verified'
       preLoaderRoute: typeof VerifiedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sellers': {
+      id: '/sellers'
+      path: '/sellers'
+      fullPath: '/sellers'
+      preLoaderRoute: typeof SellersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -242,6 +262,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   RegisterRoute: RegisterRoute,
   SearchRoute: SearchRoute,
+  SellersRoute: SellersRoute,
   VerifiedRoute: VerifiedRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   CategorySlugRoute: CategorySlugRoute,
