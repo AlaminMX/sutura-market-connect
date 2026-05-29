@@ -16,7 +16,10 @@ export interface ProductCardProps {
 }
 
 export function ProductCard(p: ProductCardProps) {
-  const url = buildWhatsAppUrl(p.whatsapp_number, p.name);
+  const storeUrl = p.seller_slug && typeof window !== "undefined"
+    ? `${window.location.origin}/store/${p.seller_slug}`
+    : undefined;
+  const url = buildWhatsAppUrl(p.whatsapp_number, p.name, storeUrl);
   const soldOut = p.stock_status === "sold_out";
   const low = p.stock_status === "low_stock";
 
