@@ -87,25 +87,36 @@ function Index() {
     <div className="min-h-screen bg-background">
       <TopBar />
 
-      {/* Hero with photo background */}
-      <section className="relative overflow-hidden">
+      {/* ------------------------------------------------------------------ */}
+      {/* Hero — isolate creates a stacking context so z-index layers work    */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="relative isolate overflow-hidden">
+        {/* Background image layer — z-0 */}
         <div className="absolute inset-0 -z-10">
           <img
             src={heroImg}
             alt="Northern Nigerian market scene with women selling fabrics and food"
-            width={1920}
-            height={1080}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover object-center"
+            loading="eager"
+            decoding="async"
           />
-          {/* warm dark overlay for legibility */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/45 to-background" />
-        </div>
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: -5 }}>
-          <div className="absolute -left-10 top-6 h-72 w-72 rounded-full bg-primary blur-3xl animate-float" style={{ opacity: 0.18 }} />
-          <div className="absolute -bottom-20 -right-10 h-96 w-96 rounded-full bg-rose blur-3xl animate-float"
-            style={{ opacity: 0.18, animationDuration: "16s", animationDirection: "reverse", animationDelay: "2s" }} />
+          {/* Warm dark overlay for text readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-background" />
         </div>
 
+        {/* Decorative ambient blobs — z-[-5] so they sit above image but below content */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: -5 }}>
+          <div
+            className="absolute -left-10 top-6 h-72 w-72 rounded-full bg-primary blur-3xl animate-float"
+            style={{ opacity: 0.15 }}
+          />
+          <div
+            className="absolute -bottom-20 -right-10 h-96 w-96 rounded-full bg-rose blur-3xl animate-float"
+            style={{ opacity: 0.15, animationDuration: "16s", animationDirection: "reverse", animationDelay: "2s" }}
+          />
+        </div>
+
+        {/* Content */}
         <div className="mx-auto max-w-3xl px-5 pt-16 pb-14 text-center sm:pt-24 sm:pb-20">
           <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium text-white backdrop-blur">
             <Sparkles className="h-3 w-3" /> Kasuwa · Community marketplace
@@ -119,7 +130,10 @@ function Index() {
           </p>
 
           {/* Search + city filter */}
-          <form onSubmit={submitSearch} className="mx-auto mt-7 flex max-w-xl flex-col gap-2 rounded-3xl border border-white/20 bg-card/95 p-2 shadow-warm-lg backdrop-blur sm:flex-row sm:rounded-full">
+          <form
+            onSubmit={submitSearch}
+            className="mx-auto mt-7 flex max-w-xl flex-col gap-2 rounded-3xl border border-white/20 bg-card/95 p-2 shadow-warm-lg backdrop-blur sm:flex-row sm:rounded-full"
+          >
             <div className="flex flex-1 items-center gap-2 rounded-full bg-background px-4 py-2.5">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
@@ -144,7 +158,7 @@ function Index() {
             </Button>
           </form>
 
-          {/* Real CTA button */}
+          {/* CTA */}
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link to="/register">
               <Button
@@ -163,7 +177,9 @@ function Index() {
         </div>
       </section>
 
-      {/* Categories */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Categories                                                          */}
+      {/* ------------------------------------------------------------------ */}
       <section id="categories" className="mx-auto max-w-5xl px-5 py-12 scroll-mt-20">
         <div className="mb-5 flex items-end justify-between">
           <div>
@@ -173,7 +189,7 @@ function Index() {
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {categories?.map((c) => {
-            const { icon: Icon, tint } = iconFor(c.name);
+            const { Component: IconComponent, containerClass } = iconFor(c.name);
             return (
               <Link
                 key={c.id}
@@ -181,8 +197,11 @@ function Index() {
                 params={{ slug: c.slug }}
                 className="shimmer group flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-4 shadow-warm transition hover:-translate-y-0.5 hover:shadow-warm-lg hover:ring-1 hover:ring-primary/20"
               >
-                <div className={`relative z-[2] flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tint}`}>
-                  <Icon className="h-6 w-6" strokeWidth={2.2} />
+                {/* Illustrated icon container */}
+                <div
+                  className={`relative z-[2] flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${containerClass} transition-transform duration-200 group-hover:scale-105`}
+                >
+                  <IconComponent size={36} />
                 </div>
                 <div className="relative z-[2] min-w-0">
                   <div className="truncate font-serif text-base leading-tight">{c.name}</div>
@@ -234,7 +253,7 @@ function Index() {
         </div>
       </section>
 
-      {/* Featured products — central to discovery */}
+      {/* Featured products */}
       <section className="mx-auto max-w-5xl px-5 py-10">
         <div className="mb-5 flex items-end justify-between">
           <div>
