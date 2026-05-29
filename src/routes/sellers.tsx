@@ -14,10 +14,6 @@ import { BackButton } from "@/components/BackButton";
 
 export const Route = createFileRoute("/sellers")({ component: SellersPage });
 
-const CATEGORIES = [
-  "Food & Drinks", "Fashion", "Beauty", "Home & Living", "Crafts & Art", "Accessories",
-];
-
 function SellersPage() {
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("All cities");
@@ -31,6 +27,15 @@ function SellersPage() {
         .select("id, slug, business_name, category, city, profile_photo_url, is_verified, rating")
         .order("is_verified", { ascending: false })
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: categoryOptions } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("categories").select("name").order("sort_order");
       if (error) throw error;
       return data ?? [];
     },
@@ -95,7 +100,7 @@ function SellersPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="All categories">All categories</SelectItem>
-              {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {(categoryOptions ?? []).map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
