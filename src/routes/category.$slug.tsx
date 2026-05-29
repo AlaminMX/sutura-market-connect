@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,6 +6,7 @@ import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { SellerCard } from "@/components/SellerCard";
 import { ProductCard } from "@/components/ProductCard";
+import { BackButton } from "@/components/BackButton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { hausaFor, iconFor, NIGERIAN_CITIES } from "@/lib/categories";
 
@@ -62,13 +63,16 @@ function CategoryPage() {
     <div className="min-h-screen bg-background">
       <TopBar />
       <div className="mx-auto max-w-5xl px-5 py-8">
-        <Link to="/" className="text-sm text-muted-foreground hover:text-primary">← Back</Link>
-        <div className="mt-4 flex items-center gap-3">
+        {/* Back navigation */}
+        <BackButton fallback="/" />
+
+        {/* Category header */}
+        <div className="mt-5 flex items-center gap-3">
           {(() => {
-            const { icon: Icon, tint } = iconFor(category?.name);
+            const { Component: IconComponent, containerClass } = iconFor(category?.name);
             return (
-              <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${tint}`}>
-                <Icon className="h-7 w-7" strokeWidth={2.2} />
+              <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${containerClass}`}>
+                <IconComponent size={42} />
               </div>
             );
           })()}
@@ -88,7 +92,7 @@ function CategoryPage() {
           </Select>
         </div>
 
-        {/* Products first — discovery-led */}
+        {/* Products — discovery-led */}
         {products && products.length > 0 && (
           <section className="mt-8">
             <h2 className="mb-3 font-serif text-xl">Products</h2>
