@@ -10,8 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { slugify } from "@/lib/whatsapp";
 import { Check, Copy, Share2 } from "lucide-react";
-
-const CITIES = ["Kano", "Kaduna", "Abuja", "Other"];
+import { NIGERIAN_CITIES } from "@/lib/categories";
 
 export const Route = createFileRoute("/register")({ component: Register });
 
@@ -28,6 +27,7 @@ function Register() {
   const [businessName, setBusinessName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [city, setCity] = useState("");
+  const [otherCity, setOtherCity] = useState("");
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
 
@@ -74,9 +74,10 @@ function Register() {
       if (!clash) break;
       attempt++; slug = `${baseSlug}-${Math.floor(Math.random() * 999)}`;
     }
+    const finalCity = city === "Other" ? otherCity.trim() : city;
     const { data, error } = await supabase.from("sellers").insert({
       user_id: userId, name, business_name: businessName, slug,
-      whatsapp_number: whatsapp, city, category, bio,
+      whatsapp_number: whatsapp, city: finalCity, category, bio,
     }).select().single();
     setBusy(false);
     if (error) { toast.error(error.message); return; }
@@ -136,9 +137,22 @@ function Register() {
               <div><Label>WhatsApp number</Label><Input required placeholder="+234..." value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} /></div>
               <div>
                 <Label>City</Label>
-                <Select value={city} onValueChange={setCity}><SelectTrigger><SelectValue placeholder="Choose city" /></SelectTrigger>
-                  <SelectContent>{CITIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <Select value={city} onValueChange={(v) => { setCity(v); if (v !== "Other") setOtherCity(""); }}>
+                  <SelectTrigger><SelectValue placeholder="Choose city" /></SelectTrigger>
+                  <SelectContent>
+                    {NIGERIAN_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
                 </Select>
+                {city === "Other" && (
+                  <Input
+                    autoFocus
+                    required
+                    placeholder="Type your city"
+                    value={otherCity}
+                    onChange={(e) => setOtherCity(e.target.value)}
+                    className="mt-2"
+                  />
+                )}
               </div>
               <div>
                 <Label>Category</Label>
@@ -147,7 +161,11 @@ function Register() {
                 </Select>
               </div>
               <div><Label>Short bio (max 150 chars)</Label><Textarea maxLength={150} value={bio} onChange={(e) => setBio(e.target.value)} /></div>
-              <Button type="submit" disabled={busy || !city || !category} className="w-full rounded-full bg-primary py-6 text-base text-primary-foreground hover:bg-primary/90">
+              <Button
+                type="submit"
+                disabled={busy || !city || !category || (city === "Other" && !otherCity.trim())}
+                className="w-full rounded-full bg-primary py-6 text-base text-primary-foreground hover:bg-primary/90"
+              >
                 {busy ? "Saving…" : "Open My Store →"}
               </Button>
             </form>
