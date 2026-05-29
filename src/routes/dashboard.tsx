@@ -15,10 +15,6 @@ import { Copy, Trash2, ExternalLink, Plus, Pencil, MessageCircle, TrendingUp } f
 import { NIGERIAN_CITIES } from "@/lib/categories";
 import { validateNigerianPhone } from "@/lib/whatsapp";
 
-const SELLER_CATEGORIES = [
-  "Food & Drinks", "Fashion", "Beauty", "Home & Living", "Crafts & Art", "Accessories",
-];
-
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
 interface Seller {
@@ -45,6 +41,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clicks, setClicks] = useState(0);
+  const [categories, setCategories] = useState<{ name: string }[]>([]);
 
   const [businessName, setBusinessName] = useState("");
   const [city, setCity] = useState("");
@@ -69,6 +66,7 @@ function Dashboard() {
   const [eSaving, setESaving] = useState(false);
 
   useEffect(() => {
+    supabase.from("categories").select("name").order("sort_order").then(({ data }) => setCategories(data ?? []));
     (async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) { nav({ to: "/auth" }); return; }
@@ -231,7 +229,7 @@ function Dashboard() {
               <Label>Category</Label>
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>{SELLER_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <SelectContent>{categories.map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div><Label>Bio</Label><Textarea value={bio} maxLength={150} onChange={(e) => setBio(e.target.value)} /></div>
