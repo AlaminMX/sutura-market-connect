@@ -20,7 +20,7 @@ async function audit(adminId: string, action: string, targetType: string, target
     action,
     target_type: targetType,
     target_id: targetId,
-    metadata,
+    metadata: metadata as never,
   });
 }
 
@@ -43,7 +43,7 @@ export const setSellerStatus = createServerFn({ method: "POST" })
       updates.blocked_at = null;
       updates.blocked_reason = null;
     }
-    const { error } = await supabaseAdmin.from("sellers").update(updates).eq("id", data.sellerId);
+    const { error } = await supabaseAdmin.from("sellers").update(updates as never).eq("id", data.sellerId);
     if (error) throw new Error(error.message);
     await audit(context.userId, `seller.${data.status}`, "seller", data.sellerId, { reason: data.reason });
     return { ok: true };
@@ -104,7 +104,7 @@ export const setProductStatus = createServerFn({ method: "POST" })
       updates.blocked_at = null;
       updates.blocked_reason = null;
     }
-    const { error } = await supabaseAdmin.from("products").update(updates).eq("id", data.productId);
+    const { error } = await supabaseAdmin.from("products").update(updates as never).eq("id", data.productId);
     if (error) throw new Error(error.message);
     await audit(context.userId, `product.${data.status}`, "product", data.productId, { reason: data.reason });
     return { ok: true };
