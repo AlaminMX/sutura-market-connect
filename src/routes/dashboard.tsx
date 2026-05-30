@@ -22,11 +22,11 @@ export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 interface Seller {
   id: string; slug: string; business_name: string; bio: string | null;
   whatsapp_number: string; profile_photo_url: string | null; cover_photo_url: string | null;
-  city: string; category: string;
+  city: string; category: string; status: string;
 }
 interface Product {
   id: string; name: string; price: number; description: string | null;
-  image_url: string | null; stock_status?: string;
+  image_url: string | null; stock_status?: string; status?: string;
 }
 
 const STOCK_OPTIONS = [
