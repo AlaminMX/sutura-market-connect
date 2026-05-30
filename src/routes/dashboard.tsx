@@ -44,6 +44,8 @@ function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [clicks, setClicks] = useState(0);
   const [categories, setCategories] = useState<{ name: string }[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+
 
   const [businessName, setBusinessName] = useState("");
   const [city, setCity] = useState("");
