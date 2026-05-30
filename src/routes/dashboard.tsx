@@ -89,6 +89,13 @@ function Dashboard() {
         .eq("seller_id", s.id)
         .gte("created_at", since);
       setClicks(count ?? 0);
+      const { data: nl } = await supabase
+        .from("seller_notices")
+        .select("id, title, message, severity, created_at, read_at")
+        .eq("seller_id", s.id)
+        .is("read_at", null)
+        .order("created_at", { ascending: false });
+      setNotices((nl ?? []) as Notice[]);
       setLoading(false);
     })();
   }, [nav]);
