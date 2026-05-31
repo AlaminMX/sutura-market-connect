@@ -1,149 +1,229 @@
+/**
+ * admin.tsx
+ * Full-featured admin panel:
+ *   1. Overview stats
+ *   2. Seller verification management
+ *   3. Category management (create, edit, rename, reorder, delete)
+ *   4. Featured products management (add, remove, reorder)
+ *   5. Homepage sections management (edit text, show/hide, reorder)
+ */
+
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
-import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/TopBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { MoreHorizontal, ShieldAlert, ShieldCheck, Trash2, Send, Eye } from "lucide-react";
 import {
-  setSellerStatus, deleteSeller, setProductStatus, deleteProduct, sendNotice,
-} from "@/lib/admin.functions";
+  BadgeCheck, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
+  Star, StarOff, Eye, EyeOff, Loader2, GripVertical,
+} from "lucide-react";
+import { PageLoader } from "@/components/LoadingSpinner";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
-interface SellerRow {
-  id: string; business_name: string; slug: string; category: string; city: string;
-  is_verified: boolean; status: string; subscription_expires_at: string | null;
-  created_at: string; user_id: string;
-}
-interface ProductRow {
-  id: string; name: string; price: number; image_url: string | null;
-  status: string; seller_id: string; created_at: string;
-  sellers?: { business_name: string; slug: string } | null;
-}
-interface NoticeRow {
-  id: string; title: string; severity: string; created_at: string; read_at: string | null;
-  seller_id: string;
-}
-interface AuditRow {
-  id: string; admin_id: string | null; action: string; target_type: string;
-  target_id: string | null; created_at: string;
-}
+interface SellerRow { id: string; business_name: string; slug: string; category: string; city: string; is_verified: boolean; }
+interface Category   { id: string; name: string; slug: string; icon_emoji: string; sort_order: number; }
+interface ProductRow { id: string; name: string; price: number; image_url: string | null; is_featured: boolean; featured_order: number; sellers: { business_name: string; city: string } | null; }
+interface Section    { id: string; key: string; title: string; subtitle: string | null; content: string | null; sort_order: number; is_visible: boolean; }
 
-const STATUS_BADGE: Record<string, string> = {
-  active: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  blocked: "bg-destructive/15 text-destructive",
-  suspended: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  expired: "bg-muted text-muted-foreground",
-};
-
-function StatusBadge({ s }: { s: string }) {
-  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${STATUS_BADGE[s] ?? "bg-muted"}`}>{s}</span>;
+function slugify(s: string) {
+  return s.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
 }
 
 function AdminPage() {
   const nav = useNavigate();
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [sellers, setSellers] = useState<SellerRow[]>([]);
-  const [products, setProducts] = useState<ProductRow[]>([]);
-  const [notices, setNotices] = useState<NoticeRow[]>([]);
-  const [audit, setAudit] = useState<AuditRow[]>([]);
-  const [productCounts, setProductCounts] = useState<Record<string, number>>({});
-  const [stats, setStats] = useState({ sellers: 0, products: 0, clicks: 0 });
 
-  // Dialog state
-  const [confirm, setConfirm] = useState<{ open: boolean; title: string; desc: string; onYes: () => void } | null>(null);
-  const [noticeFor, setNoticeFor] = useState<SellerRow | null>(null);
-  const [nTitle, setNTitle] = useState(""); const [nMsg, setNMsg] = useState("");
-  const [nSeverity, setNSeverity] = useState<"info" | "warning" | "critical">("info");
+  const [sellers,   setSellers]   = useState<SellerRow[]>([]);
+  const [categories,setCategories] = useState<Category[]>([]);
+  const [products,  setProducts]   = useState<ProductRow[]>([]);
+  const [sections,  setSections]   = useState<Section[]>([]);
+  const [stats,     setStats]      = useState({ sellers: 0, products: 0, clicks: 0 });
+  const [activeTab, setActiveTab]  = useState<"sellers"|"categories"|"featured"|"homepage">("sellers");
 
-  const fnSetSellerStatus = useServerFn(setSellerStatus);
-  const fnDeleteSeller = useServerFn(deleteSeller);
-  const fnSetProductStatus = useServerFn(setProductStatus);
-  const fnDeleteProduct = useServerFn(deleteProduct);
-  const fnSendNotice = useServerFn(sendNotice);
+  // Category editor state
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [catName,    setCatName]    = useState("");
+  const [catEmoji,   setCatEmoji]   = useState("🛍️");
+  const [catSaving,  setCatSaving]  = useState(false);
+  const [newCatOpen, setNewCatOpen] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    const [{ data: sl }, { data: pr }, { data: no }, { data: au }, { count: pc }, { count: cc }] = await Promise.all([
-      supabase.from("sellers").select("id, business_name, slug, category, city, is_verified, status, subscription_expires_at, created_at, user_id").order("created_at", { ascending: false }),
-      supabase.from("products").select("id, name, price, image_url, status, seller_id, created_at, sellers(business_name, slug)").order("created_at", { ascending: false }).limit(200),
-      supabase.from("seller_notices").select("id, title, severity, created_at, read_at, seller_id").order("created_at", { ascending: false }).limit(100),
-      supabase.from("admin_audit_log").select("id, admin_id, action, target_type, target_id, created_at").order("created_at", { ascending: false }).limit(200),
-      supabase.from("products").select("id", { count: "exact", head: true }),
-      supabase.from("whatsapp_clicks").select("id", { count: "exact", head: true }),
-    ]);
-    setSellers((sl ?? []) as SellerRow[]);
-    setProducts((pr ?? []) as ProductRow[]);
-    setNotices((no ?? []) as NoticeRow[]);
-    setAudit((au ?? []) as AuditRow[]);
-    setStats({ sellers: sl?.length ?? 0, products: pc ?? 0, clicks: cc ?? 0 });
-    const counts: Record<string, number> = {};
-    (pr ?? []).forEach((p: any) => { counts[p.seller_id] = (counts[p.seller_id] ?? 0) + 1; });
-    setProductCounts(counts);
-  }, []);
+  // Section editor state
+  const [editingSec,  setEditingSec]  = useState<Section | null>(null);
+  const [secTitle,    setSecTitle]    = useState("");
+  const [secSubtitle, setSecSubtitle] = useState("");
+  const [secContent,  setSecContent]  = useState("");
+  const [secSaving,   setSecSaving]   = useState(false);
 
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) { nav({ to: "/auth" }); return; }
       const { data: role } = await supabase.from("user_roles").select("role").eq("user_id", u.user.id).eq("role", "admin").maybeSingle();
-      if (!role) { nav({ to: "/dashboard" }); return; }
+      if (!role) { nav({ to: "/" }); return; }
       setAllowed(true);
       await loadAll();
     })();
-  }, [nav, loadAll]);
+  }, [nav]);
 
-  const runStatus = async (sellerId: string, status: "active" | "blocked" | "suspended" | "expired") => {
-    try { await fnSetSellerStatus({ data: { sellerId, status } }); toast.success(`Seller ${status}`); await loadAll(); }
-    catch (e: any) { toast.error(e.message); }
-  };
-  const runDeleteSeller = async (sellerId: string) => {
-    try { await fnDeleteSeller({ data: { sellerId } }); toast.success("Seller deleted"); await loadAll(); }
-    catch (e: any) { toast.error(e.message); }
-  };
-  const runProductStatus = async (productId: string, status: "active" | "blocked") => {
-    try { await fnSetProductStatus({ data: { productId, status } }); toast.success(`Product ${status}`); await loadAll(); }
-    catch (e: any) { toast.error(e.message); }
-  };
-  const runDeleteProduct = async (productId: string) => {
-    try { await fnDeleteProduct({ data: { productId } }); toast.success("Product deleted"); await loadAll(); }
-    catch (e: any) { toast.error(e.message); }
-  };
-  const submitNotice = async () => {
-    if (!noticeFor) return;
-    if (!nTitle.trim() || !nMsg.trim()) { toast.error("Title and message required"); return; }
-    try {
-      await fnSendNotice({ data: { sellerId: noticeFor.id, title: nTitle.trim(), message: nMsg.trim(), severity: nSeverity } });
-      toast.success("Notice sent");
-      setNoticeFor(null); setNTitle(""); setNMsg(""); setNSeverity("info");
-      await loadAll();
-    } catch (e: any) { toast.error(e.message); }
+  const loadAll = async () => {
+    const [{ data: sl }, { count: pc }, { count: cc }, { data: cats }, { data: prods }, { data: secs }] = await Promise.all([
+      supabase.from("sellers").select("id, business_name, slug, category, city, is_verified").order("created_at", { ascending: false }),
+      supabase.from("products").select("id", { count: "exact", head: true }),
+      supabase.from("whatsapp_clicks").select("id", { count: "exact", head: true }),
+      supabase.from("categories").select("*").order("sort_order"),
+      supabase.from("products").select("id, name, price, image_url, is_featured, featured_order, sellers(business_name, city)").order("is_featured", { ascending: false }).order("featured_order").limit(100),
+      supabase.from("homepage_sections").select("*").order("sort_order"),
+    ]);
+    setSellers(sl ?? []);
+    setCategories(cats ?? []);
+    setProducts((prods ?? []) as any);
+    setSections(secs ?? []);
+    setStats({ sellers: sl?.length ?? 0, products: pc ?? 0, clicks: cc ?? 0 });
   };
 
-  if (allowed === null) return <div className="p-10 text-center text-muted-foreground">Loading…</div>;
+  // ── Seller verification ──
+  const toggleVerify = async (id: string, current: boolean) => {
+    const { error } = await supabase.from("sellers").update({ is_verified: !current }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    setSellers((prev) => prev.map((s) => s.id === id ? { ...s, is_verified: !current } : s));
+    toast.success(!current ? "Verified" : "Unverified");
+  };
+
+  // ── Categories ──
+  const openNewCat = () => { setCatName(""); setCatEmoji("🛍️"); setEditingCat(null); setNewCatOpen(true); };
+  const openEditCat = (c: Category) => { setCatName(c.name); setCatEmoji(c.icon_emoji); setEditingCat(c); setNewCatOpen(true); };
+
+  const saveCat = async () => {
+    if (!catName.trim()) { toast.error("Category name required"); return; }
+    setCatSaving(true);
+    if (editingCat) {
+      const { error } = await supabase.from("categories").update({ name: catName.trim(), icon_emoji: catEmoji }).eq("id", editingCat.id);
+      if (error) { toast.error(error.message); setCatSaving(false); return; }
+      toast.success("Category updated");
+    } else {
+      const newSlug = slugify(catName);
+      const maxOrder = Math.max(0, ...categories.map((c) => c.sort_order));
+      const { error } = await supabase.from("categories").insert({ name: catName.trim(), slug: newSlug, icon_emoji: catEmoji, sort_order: maxOrder + 1 });
+      if (error) { toast.error(error.message); setCatSaving(false); return; }
+      toast.success("Category created");
+    }
+    setCatSaving(false); setNewCatOpen(false); await loadAll();
+  };
+
+  const deleteCat = async (id: string, name: string) => {
+    if (!confirm(`Delete category "${name}"? Sellers using it won't be affected.`)) return;
+    const { error } = await supabase.from("categories").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Category deleted"); setCategories((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const moveCat = async (id: string, dir: "up" | "down") => {
+    const idx = categories.findIndex((c) => c.id === id);
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= categories.length) return;
+    const updated = [...categories];
+    [updated[idx].sort_order, updated[swapIdx].sort_order] = [updated[swapIdx].sort_order, updated[idx].sort_order];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    setCategories([...updated]);
+    await Promise.all([
+      supabase.from("categories").update({ sort_order: updated[idx].sort_order }).eq("id", updated[idx].id),
+      supabase.from("categories").update({ sort_order: updated[swapIdx].sort_order }).eq("id", updated[swapIdx].id),
+    ]);
+  };
+
+  // ── Featured products ──
+  const toggleFeatured = async (p: ProductRow) => {
+    const maxOrder = Math.max(0, ...products.filter((x) => x.is_featured).map((x) => x.featured_order));
+    const updates = p.is_featured
+      ? { is_featured: false, featured_order: 0 }
+      : { is_featured: true,  featured_order: maxOrder + 1 };
+    const { error } = await supabase.from("products").update(updates).eq("id", p.id);
+    if (error) { toast.error(error.message); return; }
+    setProducts((prev) => prev.map((x) => x.id === p.id ? { ...x, ...updates } : x).sort((a, b) => {
+      if (a.is_featured && !b.is_featured) return -1;
+      if (!a.is_featured && b.is_featured) return 1;
+      return a.featured_order - b.featured_order;
+    }));
+    toast.success(p.is_featured ? "Removed from featured" : "Added to featured ⭐");
+  };
+
+  const moveFeatured = async (id: string, dir: "up" | "down") => {
+    const feat = products.filter((p) => p.is_featured).sort((a, b) => a.featured_order - b.featured_order);
+    const idx = feat.findIndex((p) => p.id === id);
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= feat.length) return;
+    const [a, b] = [feat[idx], feat[swapIdx]];
+    const temp = a.featured_order;
+    await Promise.all([
+      supabase.from("products").update({ featured_order: b.featured_order }).eq("id", a.id),
+      supabase.from("products").update({ featured_order: temp }).eq("id", b.id),
+    ]);
+    await loadAll();
+  };
+
+  // ── Homepage sections ──
+  const openEditSection = (s: Section) => {
+    setEditingSec(s); setSecTitle(s.title); setSecSubtitle(s.subtitle ?? ""); setSecContent(s.content ?? "");
+  };
+
+  const saveSection = async () => {
+    if (!editingSec) return;
+    setSecSaving(true);
+    const { error } = await supabase.from("homepage_sections").update({
+      title: secTitle.trim(), subtitle: secSubtitle.trim() || null, content: secContent.trim() || null,
+    }).eq("id", editingSec.id);
+    setSecSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Section updated");
+    setSections((prev) => prev.map((s) => s.id === editingSec.id ? { ...s, title: secTitle, subtitle: secSubtitle, content: secContent } : s));
+    setEditingSec(null);
+  };
+
+  const toggleSectionVisible = async (s: Section) => {
+    const { error } = await supabase.from("homepage_sections").update({ is_visible: !s.is_visible }).eq("id", s.id);
+    if (error) { toast.error(error.message); return; }
+    setSections((prev) => prev.map((x) => x.id === s.id ? { ...x, is_visible: !s.is_visible } : x));
+    toast.success(s.is_visible ? "Section hidden" : "Section shown");
+  };
+
+  const moveSec = async (id: string, dir: "up" | "down") => {
+    const idx = sections.findIndex((s) => s.id === id);
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sections.length) return;
+    const updated = [...sections];
+    [updated[idx].sort_order, updated[swapIdx].sort_order] = [updated[swapIdx].sort_order, updated[idx].sort_order];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    setSections([...updated]);
+    await Promise.all([
+      supabase.from("homepage_sections").update({ sort_order: updated[idx].sort_order }).eq("id", updated[idx].id),
+      supabase.from("homepage_sections").update({ sort_order: updated[swapIdx].sort_order }).eq("id", updated[swapIdx].id),
+    ]);
+  };
+
+  if (allowed === null) return <PageLoader label="Loading admin…" />;
+
+  const tabCls = (t: typeof activeTab) =>
+    `rounded-full px-4 py-1.5 text-sm font-medium transition ${activeTab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`;
+
+  const featuredProducts = products.filter((p) => p.is_featured).sort((a, b) => a.featured_order - b.featured_order);
+  const unfeaturedProducts = products.filter((p) => !p.is_featured);
 
   return (
     <div className="min-h-screen bg-background">
       <TopBar />
-      <div className="mx-auto max-w-6xl px-5 py-8">
-        <h1 className="font-serif text-3xl">Admin</h1>
+      <div className="mx-auto max-w-5xl px-5 py-8">
+        <h1 className="font-serif text-3xl">Admin Panel</h1>
 
+        {/* Stats */}
         <div className="mt-6 grid grid-cols-3 gap-3">
-          {[
-            { label: "Sellers", value: stats.sellers },
-            { label: "Products", value: stats.products },
-            { label: "WhatsApp clicks", value: stats.clicks },
-          ].map((s) => (
+          {[{ label: "Sellers", value: stats.sellers }, { label: "Products", value: stats.products }, { label: "WA clicks", value: stats.clicks }].map((s) => (
             <div key={s.label} className="rounded-2xl border bg-card p-4 shadow-warm">
               <p className="text-xs text-muted-foreground">{s.label}</p>
               <p className="mt-1 font-serif text-3xl text-primary">{s.value}</p>
@@ -151,183 +231,194 @@ function AdminPage() {
           ))}
         </div>
 
-        <Tabs defaultValue="sellers" className="mt-8">
-          <TabsList>
-            <TabsTrigger value="sellers">Sellers</TabsTrigger>
-            <TabsTrigger value="products">Products</TabsTrigger>
-            <TabsTrigger value="notices">Notices</TabsTrigger>
-            <TabsTrigger value="audit">Audit log</TabsTrigger>
-          </TabsList>
+        {/* Tab nav */}
+        <div className="mt-8 flex flex-wrap gap-2">
+          {(["sellers","categories","featured","homepage"] as const).map((t) => (
+            <button key={t} onClick={() => setActiveTab(t)} className={tabCls(t)}>
+              {t === "sellers" ? "Sellers" : t === "categories" ? "Categories" : t === "featured" ? "Featured Products" : "Homepage"}
+            </button>
+          ))}
+        </div>
 
-          <TabsContent value="sellers" className="mt-4 space-y-2">
-            {sellers.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-warm">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Link to="/store/$slug" params={{ slug: s.slug }} className="truncate font-medium hover:text-primary">{s.business_name}</Link>
-                    <StatusBadge s={s.status} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {s.category} · {s.city} · {productCounts[s.id] ?? 0} products
-                    {s.subscription_expires_at ? ` · expires ${new Date(s.subscription_expires_at).toLocaleDateString()}` : ""}
-                  </p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full"><MoreHorizontal className="h-4 w-4" /></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem asChild><Link to="/store/$slug" params={{ slug: s.slug }}><Eye className="mr-2 h-4 w-4" /> View store</Link></DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setNoticeFor(s)}><Send className="mr-2 h-4 w-4" /> Send notice</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {s.status !== "active" && <DropdownMenuItem onClick={() => runStatus(s.id, "active")}><ShieldCheck className="mr-2 h-4 w-4" /> Activate</DropdownMenuItem>}
-                    {s.status !== "suspended" && <DropdownMenuItem onClick={() => runStatus(s.id, "suspended")}>Suspend</DropdownMenuItem>}
-                    {s.status !== "expired" && <DropdownMenuItem onClick={() => runStatus(s.id, "expired")}>Mark expired</DropdownMenuItem>}
-                    {s.status !== "blocked" && <DropdownMenuItem onClick={() => runStatus(s.id, "blocked")} className="text-destructive"><ShieldAlert className="mr-2 h-4 w-4" /> Block</DropdownMenuItem>}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => setConfirm({
-                        open: true,
-                        title: `Delete ${s.business_name}?`,
-                        desc: `This will permanently remove the seller and ${productCounts[s.id] ?? 0} product(s). This action cannot be undone.`,
-                        onYes: () => runDeleteSeller(s.id),
-                      })}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete seller
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-            {sellers.length === 0 && <p className="text-sm text-muted-foreground">No sellers yet.</p>}
-          </TabsContent>
-
-          <TabsContent value="products" className="mt-4 space-y-2">
-            {products.map((p) => (
-              <div key={p.id} className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-warm">
-                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-muted">
-                  {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-medium">{p.name}</p>
-                    <StatusBadge s={p.status} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    ₦{Number(p.price).toLocaleString()} · {p.sellers?.business_name ?? "—"}
-                  </p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full"><MoreHorizontal className="h-4 w-4" /></Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {p.status === "blocked"
-                      ? <DropdownMenuItem onClick={() => runProductStatus(p.id, "active")}><ShieldCheck className="mr-2 h-4 w-4" /> Unblock</DropdownMenuItem>
-                      : <DropdownMenuItem onClick={() => runProductStatus(p.id, "blocked")} className="text-destructive"><ShieldAlert className="mr-2 h-4 w-4" /> Block</DropdownMenuItem>}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => setConfirm({
-                        open: true,
-                        title: `Delete "${p.name}"?`,
-                        desc: "This permanently removes the product. This action cannot be undone.",
-                        onYes: () => runDeleteProduct(p.id),
-                      })}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete product
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
-            {products.length === 0 && <p className="text-sm text-muted-foreground">No products yet.</p>}
-          </TabsContent>
-
-          <TabsContent value="notices" className="mt-4 space-y-2">
-            {notices.map((n) => {
-              const seller = sellers.find((s) => s.id === n.seller_id);
-              return (
-                <div key={n.id} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-warm">
+        {/* ── Sellers tab ── */}
+        {activeTab === "sellers" && (
+          <section className="mt-6">
+            <h2 className="mb-3 font-serif text-xl">Sellers ({sellers.length})</h2>
+            <div className="space-y-2">
+              {sellers.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-warm">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-medium">{n.title}</p>
-                      <StatusBadge s={n.severity} />
+                    <div className="flex items-center gap-1.5">
+                      <Link to="/store/$slug" params={{ slug: s.slug }} className="truncate font-medium hover:text-primary">{s.business_name}</Link>
+                      {s.is_verified && <BadgeCheck className="h-4 w-4 text-primary" />}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      To {seller?.business_name ?? "—"} · {new Date(n.created_at).toLocaleString()}
-                      {n.read_at ? ` · Read ${new Date(n.read_at).toLocaleString()}` : " · Unread"}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{s.category} · {s.city}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Verified</span>
+                    <Switch checked={s.is_verified} onCheckedChange={() => toggleVerify(s.id, s.is_verified)} />
                   </div>
                 </div>
-              );
-            })}
-            {notices.length === 0 && <p className="text-sm text-muted-foreground">No notices yet. Send one from the Sellers tab.</p>}
-          </TabsContent>
+              ))}
+              {sellers.length === 0 && <p className="text-sm text-muted-foreground">No sellers yet.</p>}
+            </div>
+          </section>
+        )}
 
-          <TabsContent value="audit" className="mt-4 space-y-1">
-            {audit.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-sm shadow-warm">
-                <span className="font-mono text-xs">{a.action}</span>
-                <span className="text-xs text-muted-foreground">{a.target_type} · {a.target_id?.slice(0, 8) ?? "—"}</span>
-                <span className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</span>
+        {/* ── Categories tab ── */}
+        {activeTab === "categories" && (
+          <section className="mt-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-serif text-xl">Categories ({categories.length})</h2>
+              <Button onClick={openNewCat} size="sm" className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+                <Plus className="mr-1 h-4 w-4" /> New category
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {categories.map((c, idx) => (
+                <div key={c.id} className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-warm">
+                  <span className="text-2xl">{c.icon_emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{c.name}</p>
+                    <p className="text-xs text-muted-foreground">/{c.slug}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => moveCat(c.id, "up")} disabled={idx === 0}
+                      className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                    <button onClick={() => moveCat(c.id, "down")} disabled={idx === categories.length - 1}
+                      className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                    <button onClick={() => openEditCat(c)} className="rounded p-1 hover:bg-muted">
+                      <Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => deleteCat(c.id, c.name)} className="rounded p-1 text-destructive hover:bg-destructive/10">
+                      <Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Featured products tab ── */}
+        {activeTab === "featured" && (
+          <section className="mt-6">
+            <h2 className="mb-2 font-serif text-xl">Featured Products ({featuredProducts.length})</h2>
+            <p className="mb-4 text-xs text-muted-foreground">These products appear on the homepage. Reorder to control display priority.</p>
+
+            {featuredProducts.length > 0 && (
+              <div className="mb-6 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase">Featured ({featuredProducts.length})</p>
+                {featuredProducts.map((p, idx) => (
+                  <div key={p.id} className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-warm">
+                    <GripVertical className="h-4 w-4 text-muted-foreground/50" />
+                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-muted">
+                      {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate font-medium text-sm">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">₦{Number(p.price).toLocaleString()} · {(p.sellers as any)?.business_name}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => moveFeatured(p.id, "up")} disabled={idx === 0}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                      <button onClick={() => moveFeatured(p.id, "down")} disabled={idx === featuredProducts.length - 1}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                      <button onClick={() => toggleFeatured(p)} className="rounded p-1 text-primary hover:bg-primary/10">
+                        <StarOff className="h-4 w-4" /></button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-            {audit.length === 0 && <p className="text-sm text-muted-foreground">No actions logged yet.</p>}
-          </TabsContent>
-        </Tabs>
+            )}
 
-        <Button variant="ghost" onClick={async () => { await supabase.auth.signOut(); nav({ to: "/" }); }} className="mt-8">
+            <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase">All products — click ⭐ to feature</p>
+            <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+              {unfeaturedProducts.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 rounded-xl border bg-card p-3 shadow-warm opacity-70 hover:opacity-100">
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-muted">
+                    {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate font-medium text-sm">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">₦{Number(p.price).toLocaleString()} · {(p.sellers as any)?.business_name}</p>
+                  </div>
+                  <button onClick={() => toggleFeatured(p)} className="rounded p-1 text-muted-foreground hover:text-primary">
+                    <Star className="h-4 w-4" /></button>
+                </div>
+              ))}
+              {unfeaturedProducts.length === 0 && <p className="text-sm text-muted-foreground">All products are featured.</p>}
+            </div>
+          </section>
+        )}
+
+        {/* ── Homepage sections tab ── */}
+        {activeTab === "homepage" && (
+          <section className="mt-6">
+            <h2 className="mb-2 font-serif text-xl">Homepage Sections</h2>
+            <p className="mb-4 text-xs text-muted-foreground">Edit text, show/hide, and reorder sections on the homepage.</p>
+            <div className="space-y-3">
+              {sections.map((s, idx) => (
+                <div key={s.id} className={`rounded-xl border bg-card p-4 shadow-warm ${!s.is_visible ? "opacity-50" : ""}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium">{s.title}</p>
+                      {s.subtitle && <p className="text-xs text-muted-foreground">{s.subtitle}</p>}
+                      {s.content  && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{s.content}</p>}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button onClick={() => moveSec(s.id, "up")} disabled={idx === 0}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                      <button onClick={() => moveSec(s.id, "down")} disabled={idx === sections.length - 1}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                      <button onClick={() => toggleSectionVisible(s)} className="rounded p-1 hover:bg-muted">
+                        {s.is_visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+                      <button onClick={() => openEditSection(s)} className="rounded p-1 hover:bg-muted">
+                        <Pencil className="h-4 w-4" /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <Button variant="ghost" onClick={async () => { await supabase.auth.signOut(); nav({ to: "/" }); }} className="mt-10">
           Sign out
         </Button>
       </div>
 
-      <AlertDialog open={!!confirm?.open} onOpenChange={(o) => !o && setConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription>{confirm?.desc}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { confirm?.onYes(); setConfirm(null); }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!noticeFor} onOpenChange={(o) => !o && setNoticeFor(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Send notice to {noticeFor?.business_name}</AlertDialogTitle>
-            <AlertDialogDescription>Will appear at the top of the seller's dashboard.</AlertDialogDescription>
-          </AlertDialogHeader>
+      {/* Category editor dialog */}
+      <Dialog open={newCatOpen} onOpenChange={(o) => !o && setNewCatOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCat ? "Edit category" : "New category"}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label>Severity</Label>
-              <Select value={nSeverity} onValueChange={(v) => setNSeverity(v as any)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="info">Information</SelectItem>
-                  <SelectItem value="warning">Warning</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label>Title</Label><Input value={nTitle} onChange={(e) => setNTitle(e.target.value)} maxLength={200} /></div>
-            <div><Label>Message</Label><Textarea value={nMsg} onChange={(e) => setNMsg(e.target.value)} maxLength={2000} rows={5} /></div>
+            <div><Label>Name *</Label><Input value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="e.g. Electronics" /></div>
+            <div><Label>Emoji icon</Label><Input value={catEmoji} onChange={(e) => setCatEmoji(e.target.value)} className="text-2xl" maxLength={4} /></div>
+            <Button onClick={saveCat} disabled={catSaving} className="w-full rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+              {catSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : "Save"}
+            </Button>
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={submitNotice}>Send notice</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Section editor dialog */}
+      <Dialog open={!!editingSec} onOpenChange={(o) => !o && setEditingSec(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit section — <span className="text-muted-foreground font-normal">{editingSec?.key}</span></DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Title</Label><Input value={secTitle} onChange={(e) => setSecTitle(e.target.value)} /></div>
+            <div><Label>Subtitle (Hausa or tagline)</Label><Input value={secSubtitle} onChange={(e) => setSecSubtitle(e.target.value)} /></div>
+            <div><Label>Body text (optional)</Label><Textarea value={secContent} onChange={(e) => setSecContent(e.target.value)} rows={3} /></div>
+            <Button onClick={saveSection} disabled={secSaving} className="w-full rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+              {secSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : "Save changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
