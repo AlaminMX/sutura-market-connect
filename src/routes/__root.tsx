@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { LangProvider } from "@/lib/i18n";
+import { SellerBottomNav } from "@/components/SellerBottomNav";
 
 import appCss from "../styles.css?url";
 
@@ -79,6 +80,8 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <LangProvider>
         <Outlet />
+        {/* Seller bottom navigation — only renders for authenticated sellers */}
+        <SellerBottomNav />
         <Toaster />
       </LangProvider>
     </QueryClientProvider>
