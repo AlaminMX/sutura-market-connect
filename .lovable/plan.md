@@ -1,106 +1,245 @@
-# Admin Moderation & Seller Lifecycle System
 
-A full moderation layer for Sutura Market: seller blocking/deletion, product moderation, prominent seller notices, manual subscription control, and an admin audit log.
+# Sutura Market — Localization, Verification, Wishlist, Admin & Media Plan (v2)
 
-## 1. Database changes
+This plan covers Parts 1–9 of the original brief plus the 6 revisions. It builds on the existing moderation system (sellers.status, seller_notices, admin_audit_log) without breaking it.
 
-### New columns on `public.sellers`
-- `status text NOT NULL DEFAULT 'active'` — one of `active | suspended | expired | blocked`
-- `subscription_expires_at timestamptz` (nullable) — informational, manually set by admin
-- `blocked_at timestamptz`, `blocked_reason text` (nullable)
+---
 
-`is_verified` stays unchanged. Public visibility is now driven by `status = 'active'`.
+## Part 1 — Cities of Business
 
-### New column on `public.products`
-- `status text NOT NULL DEFAULT 'active'` — one of `active | blocked`
-- `blocked_at timestamptz`, `blocked_reason text` (nullable)
+**New table `cities_of_business`**
+- `id`, `name`, `state`, `slug` (unique, URL-safe), `is_active` (default true), `sort_order`, timestamps
+- RLS: public SELECT where `is_active = true` OR admin; admin full write
+- Seeded with: Kaduna, Kano, Bauchi, Abuja, Sokoto (admin can add more, none hardcoded in app code)
 
-### New table `public.seller_notices`
-- `id uuid pk`, `seller_id uuid`, `created_by uuid` (admin), `title text`, `message text`,
-  `severity text` (`info | warning | critical`), `created_at`, `read_at timestamptz` (nullable)
-- GRANTs + RLS: seller can `SELECT` & `UPDATE` (only `read_at`) own rows; admin full access via `has_role`.
+**`sellers` table**
+- Add `city_id uuid REFERENCES cities_of_business(id)`
+- Keep legacy `city text` for one release; backfill `city_id` by matching name; new registrations require `city_id`
+- Admin can edit `city_id` on any seller
 
-### New table `public.admin_audit_log`
-- `id`, `admin_id uuid`, `action text` (e.g. `seller.block`, `product.delete`, `notice.send`, `subscription.change`),
-  `target_type text` (`seller|product|notice|subscription`), `target_id uuid`, `metadata jsonb`, `created_at`
-- GRANTs + RLS: only admins can `SELECT`/`INSERT` (insert from server-side admin code).
+**Seller registration**
+- Required dropdown sourced from active cities, label "City of Business" with helper text from brief
+- Block submit if empty
 
-### RLS updates
-- **Sellers** `sellers_public_read`: change `USING (true)` → `USING (status = 'active' OR has_role(auth.uid(),'admin') OR auth.uid() = user_id)` so blocked/suspended/expired stores disappear from public queries while owners + admins still see them.
-- **Products** `products_public_read`: change to `USING (status = 'active' AND EXISTS(SELECT 1 FROM sellers s WHERE s.id = products.seller_id AND s.status = 'active') OR has_role(auth.uid(),'admin') OR EXISTS(SELECT 1 FROM sellers s WHERE s.id = products.seller_id AND s.user_id = auth.uid()))`.
-- **Sellers** add `sellers_delete_admin` already exists; add policy preventing seller from changing own `status` (trigger `prevent_self_status_change` similar to `prevent_self_verify`).
-- **Products** add trigger preventing seller from changing own `status` away from admin-set `blocked`.
+**Admin Cities tab (new in `/admin`)**
+- Add / edit / rename / enable / disable / delete (guard: refuse delete if sellers reference it; suggest disable)
+- Drag-to-reorder via `sort_order`
+- **City analytics columns (Change 2)**: per-row `sellers_count`, `products_count`, `sellers_added_30d`, `products_added_30d`. Sort by any column; growth arrows highlight fastest-growing and underperforming cities. Stats come from a `cities_with_stats` SQL view (LEFT JOIN sellers + products, GROUP BY city) so they auto-update on every read. No materialized view — view is cheap at our scale and always fresh.
+- All actions via `cities.functions.ts` + `assertAdmin` + audit log
 
-### Trigger
-- `seller_notices`: on update, only allow `read_at` to change for the seller; admin unrestricted.
+---
 
-## 2. Admin UI (`/admin`)
+## Part 2 — Marketplace Localization
 
-Tabs: **Sellers · Products · Notices · Audit log**.
+**User city preference**
+- Guest: `localStorage` (`sutura.preferred_city_slug`)
+- Logged-in: `profiles.preferred_city_id` (profiles table created in Part 3)
+- `useCityPreference()` hook: logged-in pref wins, falls back to localStorage, syncs on login
 
-### Sellers tab
-Row shows: business name, store slug, registered date, status badge, product count, subscription expiry.
-Actions menu: View store · Send notice · Block/Unblock · Suspend/Activate · Set expiry · Delete.
-- Block/Suspend/Activate update `sellers.status`.
-- Delete opens confirm dialog showing seller name + product count + irreversible warning. Deletes products → notices → seller row (cascade order in a server fn).
+**First-time prompt**
+- Lightweight dismissible sheet on first visit: "📍 Select your city to see products available near you" — lists active cities, never blocks browsing
 
-### Products tab
-List of recent products with seller, price, status. Actions: View · Block/Unblock · Delete (confirm dialog showing product name + image).
+**Header**
+- TopBar: "📍 Your Marketplace: {City}" with click-to-switch popover + "Show all cities" escape hatch
 
-### Notices tab
-"Send notice" form: pick seller (searchable), title, severity, message. List recent notices with read state + timestamp.
+**Filtering**
+- Homepage, `/sellers`, `/category/$slug`, `/search`, featured, recommendations all filter by `sellers.city_id = preferredCityId`
+- Switching invalidates TanStack Query caches
 
-### Audit log tab
-Reverse-chronological table of `admin_audit_log` entries.
+---
 
-All admin mutations go through `createServerFn` handlers in `src/lib/admin.functions.ts` using `requireSupabaseAuth` + `has_role` check, writing audit rows via `supabaseAdmin`.
+## Part 2b — Dedicated City Marketplace Pages (Change 3)
 
-## 3. Seller dashboard (`/dashboard`)
+**New route `/city/$slug`**
+- Self-contained marketplace: hero with city name + state, featured products (city-scoped), category grid (only categories with active products in that city), seller grid, all products listing
+- Loader: looks up city by slug → 404 if inactive/missing → fetches city-scoped data via public server fn
+- Sub-routes: `/city/$slug/sellers`, `/city/$slug/category/$catSlug` (optional, reuse existing components with city filter)
 
-Top of page renders:
-- **Status banner** when `seller.status !== 'active'`:
-  - `blocked` / `suspended` → red: "Your store is currently inactive. Please contact support for assistance."
-  - `expired` → amber: "Your subscription has expired. Contact admin to renew."
-- **Notice cards** for all unread `seller_notices`, full-width, color-coded by severity (blue/amber/red), each with "Mark as read" button that sets `read_at = now()`.
+**SEO (Change 6)**
+- `head()` per route: title `"{City} Marketplace — Sutura"`, description `"Discover sellers and products in {City}, {State}. Shop locally on Sutura."`, og:title, og:description, og:url, canonical (leaf only)
+- JSON-LD: `@type: "Marketplace"` + `BreadcrumbList`; per-product on store/product pages already covered
+- Sitemap: extend `src/routes/sitemap[.]xml.ts` to enumerate every active city → `/city/{slug}`
+- Slugs are URL-safe (kebab-case, no diacritics)
 
-Product list in dashboard shows a "Blocked by Administration" badge on products where `status='blocked'`; the edit form disables the publish toggle for those.
+---
 
-## 4. Public surfaces
+## Part 2c — Homepage "Explore by City" (Change 4)
 
-No code changes needed in `/`, `/search`, `/category/$slug`, `/store/$slug` — the tightened RLS policies automatically hide non-active sellers and non-active products. Verify each query still works for the owner/admin path.
+- New homepage section rendered from `cities_of_business WHERE is_active` ordered by `sort_order`
+- Card per city showing name, state, seller count (from `cities_with_stats` view), optional icon
+- Click → `/city/{slug}`
+- Zero hardcoded city names
 
-## 5. Files
+---
 
-**New**
-- `src/lib/admin.functions.ts` — server fns: `setSellerStatus`, `deleteSeller`, `setProductStatus`, `deleteProduct`, `sendNotice`, `setSubscriptionExpiry`, `listAuditLog`, all admin-gated + audit-logged.
-- `src/lib/notices.functions.ts` — `markNoticeRead` for sellers.
-- `src/components/admin/SellersTable.tsx`, `ProductsTable.tsx`, `NoticesPanel.tsx`, `AuditLogTable.tsx`, `ConfirmDialog.tsx`.
-- `src/components/dashboard/StatusBanner.tsx`, `NoticeCard.tsx`.
-- Migration file under `supabase/migrations/`.
+## Part 3 — User Accounts & Wishlist
 
-**Modified**
-- `src/routes/admin.tsx` — replace single list with tabbed layout.
-- `src/routes/dashboard.tsx` — render `StatusBanner` + notice cards at top; show blocked badge in product list.
-- `src/start.ts` — ensure `attachSupabaseAuth` already registered (it is).
+**New tables**
+- `profiles`: `user_id` PK, `display_name`, `preferred_city_id`, timestamps; RLS owner-only; auto-created via extended `handle_new_user` trigger
+- `wishlists`: `user_id`, `product_id`, `created_at`, PK(user_id, product_id); RLS owner-only
+- `recently_viewed`: `user_id`, `product_id`, `viewed_at`; RLS owner-only; capped at 50/user via trigger
 
-## 6. Security
+**UI**
+- Heart icon on `ProductCard` — guests get auth modal with value message: "Create a free account to save products, follow sellers, and get recommendations from your city."
+- New `/account` route: Profile (name, preferred city), Wishlist, Recently Viewed
+- One-time migration of any existing localStorage wishlist on first login
 
-- All admin actions verified server-side with `has_role(auth.uid(), 'admin')`; client role checks are UX only.
-- Triggers prevent sellers from self-editing `status` (seller) or `status` (product when blocked by admin) and from forging `read_at` on others' notices.
-- Audit log is insert-only from server fns using `supabaseAdmin`; sellers cannot read it.
+---
 
-## 7. Verification checklist
+## Part 4 — Admin Seller Visibility & Edit
 
-1. Block a seller → store + products vanish from `/`, `/search`, category, but seller still logs in and sees red banner.
-2. Unblock → reappears.
-3. Block a product → gone from public, seller sees "Blocked by Administration".
-4. Delete seller (with products) → confirm dialog, then fully removed.
-5. Send INFO/WARNING/CRITICAL notice → appears at top of dashboard with correct color; "Mark as read" updates admin view.
-6. Subscription: set to `expired` → public hidden, amber banner shown.
-7. Every admin action shows up in audit log with admin email + timestamp.
+**Admin seller detail drawer**
+- Every column: name, business_name, whatsapp, email (joined from `auth.users` via server fn), city, state, profile/cover, verification docs, dates, subscription, status, verification_status
+- Inline edit for every field via `adminUpdateSeller` (uses `supabaseAdmin`, audited)
 
-## 8. Future improvements
-- Email/WhatsApp delivery for critical notices.
-- Automated expiry via pg_cron flipping `active` → `expired` when `subscription_expires_at < now()`.
-- Admin search/filter in audit log.
-- Per-product moderation reasons surfaced to seller.
+---
+
+## Part 5 — Order/Lead Management
+
+- Extend admin "Leads" tab over `whatsapp_clicks` joined with seller name, business_name, city, state, product
+- True `orders` table out of scope unless requested
+
+---
+
+## Part 6 — Admin Governance
+
+Covered by: existing admin panel + Cities tab + seller detail drawer + verification queue. Every admin action audited.
+
+---
+
+## Part 7 — Service Role for Moderation
+
+**Audit**: `SUPABASE_SERVICE_ROLE_KEY` already configured; `admin.functions.ts` already uses `supabaseAdmin`. Real gaps:
+- `deleteSeller` doesn't remove the `auth.users` row → call `supabaseAdmin.auth.admin.deleteUser(seller.user_id)` after cascading deletes
+- Add `adminDeleteUser` server fn
+- Extend cascades to `profiles`, `wishlists`, `recently_viewed`
+- Confirm block/suspend/notice paths execute end-to-end
+
+No env changes. Service-role key stays exclusively in `client.server.ts` (server-only import).
+
+---
+
+## Part 8 — Seller Verification Workflow (Revised — Change 1)
+
+**`sellers` additions**
+- `verification_status` text: `pending | approved | rejected | suspended` (default `pending`)
+- `verification_decided_at`, `verification_decided_by`, `rejection_reason`
+- `verification_documents jsonb` (array of `{url, label, uploaded_at}`)
+
+**RLS tightening**
+- `sellers_public_read` and `products_public_read` require `status='active' AND verification_status='approved'`
+- Owner + admin still see their own
+- **Hard server-side block**: trigger on `products` rejects INSERT/UPDATE when the owning seller's `verification_status != 'approved'` (admins bypass via `has_role`). This is the gate — UI disablement alone is not enough.
+
+**Registration flow**
+- Submit → confirmation screen: "Your application has been submitted… review… notified once approved."
+- New sellers default to `pending`
+
+**Pending seller dashboard (revised)**
+Pending sellers CAN: log in, view profile, edit profile fields, upload verification documents, mark notices as read, respond to admin requests.
+Pending sellers CANNOT: see/access product creation UI, edit existing products, publish, view product management tools (entire products section hidden behind verification gate).
+
+Prominent banner: 🟡 **Verification Pending** — "Your store is currently under review. Product creation will become available after approval."
+
+The Products tab in `/dashboard` is replaced (for pending sellers) with a verification-status panel + document upload + activity log. No empty product table, no disabled "New product" button that hints at the feature — the section simply isn't there until approval.
+
+**Admin Verification Queue (new tab in `/admin`)**
+- Default filter: pending
+- Per-row: all seller data + document previews
+- Actions: Approve / Reject (with reason) / Request changes (sends notice) / Suspend
+- Filterable by status; sortable by submission date
+
+**Approval / Rejection**
+- Approve → status flips to `approved`, critical-severity notice created, audit entry; seller dashboard reveals product tools + shows "🟢 Your store has been approved and is now live."
+- Reject → banner "🔴 Verification Rejected" + admin reason + "Resubmit" button (resets to `pending`, clears reason)
+
+---
+
+## Part 8b — Existing Seller Migration Review (Change 5)
+
+**Migration strategy**
+- Add `verification_status` column with default `pending`
+- Backfill ALL existing sellers to `pending` (safe default — Option B as baseline)
+- Then surface them in a dedicated **"Migration Review"** sub-tab of the Verification Queue
+
+**Migration Review UI**
+- One row per pre-existing seller with checkbox + all key fields + document presence indicator
+- Toolbar: **Bulk Approve · Bulk Reject · Bulk Suspend** (select-all + per-row select)
+- Bulk actions go through `bulkSetVerification` server fn — one audit entry per affected seller, single critical notice per seller
+- Once a seller is decided, they leave the migration sub-tab and merge into the normal queue
+
+This prevents accidental approval of test/duplicate/incomplete accounts and gives admins explicit control. Admins who want Option A can use "Select all → Bulk Approve" in one click.
+
+---
+
+## Part 9 — Reusable Image Upload + Media Viewer
+
+**One `<ImageUploader>` component**
+- Props: `aspect` ('square'|'circle'|'banner'|'product'|number), `onUploaded(url)`, `bucket`, `pathPrefix`, `maxSizeMb`
+- Pipeline: pick → crop/zoom/drag modal (`react-easy-crop`) → canvas resize+compress (`browser-image-compression`) → upload to `sutura` bucket → return URL
+- Single optimized JPEG/WebP, ~1600px long edge, ~85% quality
+- Replaces ad-hoc uploads in seller registration, dashboard profile/cover, product create/edit, verification docs, category images
+
+**One `<MediaViewer>` component**
+- Full-screen lightbox: zoom, fade, close (Esc/X), swipe (mobile), arrow keys + buttons (desktop)
+- Optional caption (product name + description below image)
+- Thumbnail strip when >1 image
+- Used everywhere images appear
+
+**Storage**
+- Reuse public `sutura` bucket; new prefix `verification-docs/` is private — only owner + admin can read via signed URL from server fn
+
+---
+
+## Database Summary
+
+**New tables**: `cities_of_business`, `profiles`, `wishlists`, `recently_viewed`
+**New view**: `cities_with_stats` (sellers + products counts, 30-day deltas)
+**Updated tables**: `sellers` (+ `city_id`, `verification_status`, `verification_decided_at`, `verification_decided_by`, `rejection_reason`, `verification_documents`)
+**RLS changes**: public-read on sellers/products requires `approved`; product write blocked by trigger when seller not approved
+**New triggers**: `block_unapproved_product_writes`, `cap_recently_viewed_50`
+
+## Server Functions (new/extended)
+
+- `src/lib/cities.functions.ts` — list, CRUD, reorder, stats
+- `src/lib/account.functions.ts` — profile, wishlist, recently viewed, set preferred city
+- `src/lib/verification.functions.ts` — approve, reject, suspend, request-changes, resubmit, `bulkSetVerification`
+- `src/lib/city-marketplace.functions.ts` — public city-scoped data fetchers
+- Extend `src/lib/admin.functions.ts` — `adminUpdateSeller`, `adminDeleteUser`, cascade fixes
+
+## New Routes
+
+- `/account` (authenticated)
+- `/city/$slug` (public, SEO-optimized, in sitemap)
+- Admin `/admin` gains tabs: **Cities** (with stats), **Verification** (Pending / Migration Review / All)
+
+## New Components
+
+`ImageUploader`, `MediaViewer`, `CitySwitcher`, `CityPickerModal`, `CityCard`, `ExploreCitiesSection`, `VerificationBanner`, `VerificationQueueTable`, `MigrationReviewTable`, `BulkActionBar`, `AdminSellerDrawer`, `CityStatsTable`, `WishlistButton`.
+
+## Dependencies
+
+Add: `react-easy-crop`, `browser-image-compression`.
+
+## Security
+
+- All admin writes: server fn + `assertAdmin` + `supabaseAdmin` + audit log
+- Service role key only in `client.server.ts`
+- RLS denies non-approved sellers/products to public
+- Wishlist/profiles/recently_viewed scoped to `auth.uid()`
+- Product-write trigger enforces verification at DB level (defense in depth beyond UI hiding)
+- Verification documents private, served via signed URLs
+
+## Backward Compatibility
+
+- `sellers.city` retained one release; reads prefer `city_id`
+- Existing sellers → `verification_status='pending'` then routed through Migration Review (no silent auto-approval)
+- localStorage wishlist migrated on first login
+
+## Verification Checklist (post-build)
+
+City CRUD, city analytics accuracy, `/city/$slug` page renders + SEO tags present + sitemap entry, "Explore by City" homepage section dynamic, city switching, guest→login wishlist migration, admin seller edit, admin user delete cascade, verification queue approve/reject/suspend/resubmit, **pending sellers cannot reach product creation UI or DB**, migration review bulk actions, banners visible, image crop/zoom on every upload, lightbox swipe/keyboard, no service-role key in client bundle.
+
+## Out of Scope (call out for future)
+
+True multi-item orders/cart, email/WhatsApp notifications on approval, pg_cron for subscription expiry, cross-city search.
