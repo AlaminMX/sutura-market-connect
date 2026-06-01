@@ -18,6 +18,7 @@ import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { ProductCard } from "@/components/ProductCard";
 import { BackButton } from "@/components/BackButton";
+import { VerificationBanner, ApprovedBanner } from "@/components/VerificationBanner";
 import { SectionLoader } from "@/components/LoadingSpinner";
 import {
   BadgeCheck, MapPin, Share2, Heart, Pencil, X, Check,
@@ -271,6 +272,16 @@ function StorePage() {
       </div>
 
       <div className="mx-auto max-w-3xl px-5">
+        {/* Verification banner — owner only */}
+        {isOwner && seller.verification_status && seller.verification_status !== "approved" && (
+          <div className="pt-4">
+            <VerificationBanner status={seller.verification_status as any} reason={seller.rejection_reason} />
+          </div>
+        )}
+        {isOwner && seller.verification_status === "approved" && (
+          <div className="pt-4"><ApprovedBanner /></div>
+        )}
+
         {/* Profile picture */}
         <div className="-mt-14 flex items-end gap-4">
           <div className="relative z-10 h-28 w-28 shrink-0 overflow-hidden rounded-full border-4 border-background bg-secondary shadow-warm-lg ring-2 ring-primary/15 transition-shadow duration-200">
@@ -385,7 +396,7 @@ function StorePage() {
         </div>
 
         {/* ── Add product form (owner + edit mode) ── */}
-        {isOwner && editMode && (
+        {isOwner && editMode && seller.verification_status === "approved" && (
           <section className="mt-8 rounded-2xl border border-primary/20 bg-card p-5 shadow-warm">
             <h2 className="mb-4 font-serif text-xl text-primary">Add New Product</h2>
             <form onSubmit={addProduct} className="space-y-3">
@@ -422,7 +433,7 @@ function StorePage() {
                   whatsapp_number={seller.whatsapp_number}
                 />
                 {/* Edit/delete overlay for owner in edit mode */}
-                {isOwner && editMode && (
+                {isOwner && editMode && seller.verification_status === "approved" && (
                   <div className="absolute inset-0 flex items-start justify-end gap-1 p-2 pointer-events-none">
                     <button
                       onClick={() => openEditProduct(p)}
