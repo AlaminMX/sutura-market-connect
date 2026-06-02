@@ -25,6 +25,7 @@ function SellersPage() {
       const { data, error } = await supabase
         .from("sellers")
         .select("id, slug, business_name, category, city, profile_photo_url, is_verified, rating")
+        .eq("is_blocked", false)
         .order("is_verified", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -74,7 +75,6 @@ function SellersPage() {
           )}
         </div>
 
-        {/* Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-8">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -86,18 +86,14 @@ function SellersPage() {
             />
           </div>
           <Select value={city} onValueChange={setCity}>
-            <SelectTrigger className="w-full rounded-full sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="w-full rounded-full sm:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="All cities">All cities</SelectItem>
               {NIGERIAN_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-full rounded-full sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="w-full rounded-full sm:w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="All categories">All categories</SelectItem>
               {(categoryOptions ?? []).map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
@@ -105,7 +101,6 @@ function SellersPage() {
           </Select>
         </div>
 
-        {/* Grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 9 }).map((_, i) => (
@@ -148,6 +143,13 @@ function SellersPage() {
         )}
       </div>
       <Footer />
+      <style>{`
+        @keyframes card-enter {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .card-enter { animation: card-enter 0.35s ease both; }
+      `}</style>
     </div>
   );
 }
