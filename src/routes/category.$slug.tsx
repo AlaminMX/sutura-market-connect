@@ -32,7 +32,8 @@ function CategoryPage() {
       let q = supabase
         .from("sellers")
         .select("id, slug, business_name, category, city, profile_photo_url, is_verified, rating")
-        .eq("category", category!.name);
+        .eq("category", category!.name)
+        .eq("is_blocked", false);
       if (city !== "All cities") q = q.eq("city", city);
       const { data, error } = await q.order("is_verified", { ascending: false });
       if (error) throw error;
@@ -46,8 +47,10 @@ function CategoryPage() {
     queryFn: async () => {
       let qb = supabase
         .from("products")
-        .select("id, name, price, image_url, stock_status, seller_id, sellers!inner(business_name, city, slug, whatsapp_number, category)")
+        .select("id, name, price, image_url, stock_status, status, seller_id, sellers!inner(business_name, city, slug, whatsapp_number, category, is_blocked)")
         .eq("sellers.category", category!.name)
+        .eq("status", "active")
+        .eq("sellers.is_blocked", false)
         .order("created_at", { ascending: false })
         .limit(24);
       if (city !== "All cities") qb = qb.eq("sellers.city", city);
@@ -63,16 +66,20 @@ function CategoryPage() {
     <div className="min-h-screen bg-background">
       <TopBar />
       <div className="mx-auto max-w-5xl px-5 py-8">
-        {/* Back navigation */}
         <BackButton fallback="/" />
 
-        {/* Category header */}
+        {/* Category header — image if available, icon fallback */}
         <div className="mt-5 flex items-center gap-3">
           {(() => {
             const { Component: IconComponent, containerClass } = iconFor(category?.name);
+            const imageUrl = (category as any)?.image_url;
             return (
-              <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${containerClass}`}>
-                <IconComponent size={42} />
+              <div className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl ${imageUrl ? "" : containerClass}`}>
+                {imageUrl ? (
+                  <img src={imageUrl} alt={category?.name} className="h-full w-full object-cover rounded-2xl" />
+                ) : (
+                  <IconComponent size={42} />
+                )}
               </div>
             );
           })()}
@@ -92,7 +99,6 @@ function CategoryPage() {
           </Select>
         </div>
 
-        {/* Products — discovery-led */}
         {products && products.length > 0 && (
           <section className="mt-8">
             <h2 className="mb-3 font-serif text-xl">Products</h2>
@@ -107,6 +113,7 @@ function CategoryPage() {
                     price={Number(p.price)}
                     image_url={p.image_url}
                     stock_status={p.stock_status}
+                    status={(p as any).status}
                     seller_id={p.seller_id}
                     seller_name={s?.business_name}
                     seller_city={s?.city}
