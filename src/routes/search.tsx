@@ -3,9 +3,8 @@
  * Fully upgraded search — supports:
  *   • Seller name, business name, bio
  *   • Product name, description
- *   • Category
- *   • State / city / location
- *   • Keywords (multi-word partial match)
+ *   • Category / city filtering
+ *   • Blocked sellers and blocked products excluded from results
  */
 
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -39,9 +38,9 @@ function SearchPage() {
   const { q, city: initialCity, category: initialCategory } = Route.useSearch();
   const nav = useNavigate();
 
-  const [localQ, setLocalQ]           = useState(q);
-  const [filterCity, setFilterCity]   = useState(initialCity ?? "All cities");
-  const [filterCat, setFilterCat]     = useState(initialCategory ?? "All categories");
+  const [localQ, setLocalQ]         = useState(q);
+  const [filterCity, setFilterCity] = useState(initialCity ?? "All cities");
+  const [filterCat, setFilterCat]   = useState(initialCategory ?? "All categories");
   const [showFilters, setShowFilters] = useState(false);
 
   const { data: categories } = useQuery({
@@ -59,11 +58,12 @@ function SearchPage() {
     queryKey: ["search-products", q, activeCity, activeCat],
     enabled: !!q,
     queryFn: async () => {
-      // Search products by name OR description
       let qb = supabase
         .from("products")
-        .select("id, name, price, image_url, stock_status, seller_id, sellers!inner(business_name, city, slug, whatsapp_number, category)")
+        .select("id, name, price, image_url, stock_status, status, seller_id, sellers!inner(business_name, city, slug, whatsapp_number, category, is_blocked)")
         .or(`name.ilike.%${q}%,description.ilike.%${q}%`)
+        .eq("status", "active")
+        .eq("sellers.is_blocked", false)
         .limit(40);
       if (activeCity) qb = qb.eq("sellers.city", activeCity);
       if (activeCat)  qb = qb.eq("sellers.category", activeCat);
@@ -77,11 +77,11 @@ function SearchPage() {
     queryKey: ["search-sellers", q, activeCity, activeCat],
     enabled: !!q,
     queryFn: async () => {
-      // Search sellers by business_name, name, bio, category, city
       let qb = supabase
         .from("sellers")
         .select("id, slug, business_name, category, city, profile_photo_url, is_verified, rating")
         .or(`business_name.ilike.%${q}%,name.ilike.%${q}%,bio.ilike.%${q}%,category.ilike.%${q}%,city.ilike.%${q}%`)
+        .eq("is_blocked", false)
         .limit(20);
       if (activeCity) qb = qb.eq("city", activeCity);
       if (activeCat)  qb = qb.eq("category", activeCat);
@@ -96,8 +96,8 @@ function SearchPage() {
     if (!localQ.trim()) return;
     nav({ to: "/search", search: {
       q: localQ.trim(),
-      city:     filterCity !== "All cities"      ? filterCity : undefined,
-      category: filterCat  !== "All categories"  ? filterCat  : undefined,
+      city:     filterCity !== "All cities"     ? filterCity : undefined,
+      category: filterCat  !== "All categories" ? filterCat  : undefined,
     }});
   };
 
@@ -136,9 +136,7 @@ function SearchPage() {
             <div className="flex-1 min-w-[140px]">
               <p className="mb-1 text-xs font-medium text-muted-foreground">City / State</p>
               <Select value={filterCity} onValueChange={setFilterCity}>
-                <SelectTrigger className="rounded-full">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="rounded-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All cities">All cities</SelectItem>
                   {NIGERIAN_CITIES.filter((c) => c !== "Other").map((c) => (
@@ -150,9 +148,7 @@ function SearchPage() {
             <div className="flex-1 min-w-[140px]">
               <p className="mb-1 text-xs font-medium text-muted-foreground">Category</p>
               <Select value={filterCat} onValueChange={setFilterCat}>
-                <SelectTrigger className="rounded-full">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="rounded-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All categories">All categories</SelectItem>
                   {(categories ?? []).map((c) => (
@@ -204,7 +200,9 @@ function SearchPage() {
                   const s = (p as any).sellers;
                   return (
                     <ProductCard key={p.id} id={p.id} name={p.name} price={Number(p.price)}
-                      image_url={p.image_url} stock_status={p.stock_status} seller_id={p.seller_id}
+                      image_url={p.image_url} stock_status={p.stock_status}
+                      status={(p as any).status}
+                      seller_id={p.seller_id}
                       seller_name={s?.business_name} seller_city={s?.city}
                       seller_slug={s?.slug} whatsapp_number={s?.whatsapp_number ?? ""} />
                   );
