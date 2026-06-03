@@ -48,6 +48,7 @@ export type Database = {
         Row: {
           icon_emoji: string
           id: string
+          image_url: string | null
           name: string
           slug: string
           sort_order: number
@@ -55,6 +56,7 @@ export type Database = {
         Insert: {
           icon_emoji?: string
           id?: string
+          image_url?: string | null
           name: string
           slug: string
           sort_order?: number
@@ -62,6 +64,7 @@ export type Database = {
         Update: {
           icon_emoji?: string
           id?: string
+          image_url?: string | null
           name?: string
           slug?: string
           sort_order?: number
@@ -295,6 +298,7 @@ export type Database = {
           cover_photo_url: string | null
           created_at: string
           id: string
+          is_blocked: boolean
           is_verified: boolean
           name: string
           profile_photo_url: string | null
@@ -321,6 +325,7 @@ export type Database = {
           cover_photo_url?: string | null
           created_at?: string
           id?: string
+          is_blocked?: boolean
           is_verified?: boolean
           name: string
           profile_photo_url?: string | null
@@ -347,6 +352,7 @@ export type Database = {
           cover_photo_url?: string | null
           created_at?: string
           id?: string
+          is_blocked?: boolean
           is_verified?: boolean
           name?: string
           profile_photo_url?: string | null
