@@ -6,7 +6,7 @@ import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { ProductCard } from "@/components/ProductCard";
 import { BackButton } from "@/components/BackButton";
-import { Heart, ShoppingBag } from "lucide-react";
+import { Bookmark, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWishlist } from "@/lib/wishlist";
 
