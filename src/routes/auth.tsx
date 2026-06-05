@@ -55,64 +55,64 @@ function AuthPage() {
     e.preventDefault();
     setLoading(true);
 
-    if (mode === "signup") {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: `${window.location.origin}/verified` },
-      });
-      if (error) { toast.error(error.message); setLoading(false); return; }
-      if (data.user && !data.session) {
-        setLoading(false);
-        nav({ to: "/verify-email", search: { email } });
-        return;
-      }
-      if (data.user) await routeAfterLogin(data.user.id);
-
-    } else if (mode === "signin") {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        if (error.message.toLowerCase().includes("not confirmed")) {
-          setLoading(false);
+    try {
+      if (mode === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/verified` },
+        });
+        if (error) { toast.error(error.message); return; }
+        if (data.user && !data.session) {
           nav({ to: "/verify-email", search: { email } });
           return;
         }
-        toast.error(error.message);
-      } else if (data.user) {
-        if (!data.user.email_confirmed_at) {
-          setLoading(false);
-          nav({ to: "/verify-email", search: { email } });
+        if (data.user) await routeAfterLogin(data.user.id);
+
+      } else if (mode === "signin") {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (error.message.toLowerCase().includes("not confirmed")) {
+            nav({ to: "/verify-email", search: { email } });
+            return;
+          }
+          toast.error(error.message);
           return;
         }
-        toast.success("Welcome back");
-        await routeAfterLogin(data.user.id);
-      }
+        if (data.user) {
+          if (!data.user.email_confirmed_at) {
+            nav({ to: "/verify-email", search: { email } });
+            return;
+          }
+          toast.success("Welcome back");
+          await routeAfterLogin(data.user.id);
+        }
 
-    } else if (mode === "forgot") {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      setLoading(false);
-      if (error) { toast.error(error.message); return; }
-      setResetSent(true);
-      return;
+      } else if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) { toast.error(error.message); return; }
+        setResetSent(true);
+        return;
 
-    } else if (mode === "reset") {
-      if (newPassword.length < 6) {
-        toast.error("Password must be at least 6 characters.");
-        setLoading(false);
+      } else if (mode === "reset") {
+        if (newPassword.length < 6) {
+          toast.error("Password must be at least 6 characters.");
+          return;
+        }
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) { toast.error(error.message); return; }
+        toast.success("Password updated! You're now signed in.");
+        const { data } = await supabase.auth.getUser();
+        if (data.user) await routeAfterLogin(data.user.id);
         return;
       }
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+    } catch (err: any) {
+      toast.error(err?.message ?? "Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Password updated! You're now signed in.");
-      const { data } = await supabase.auth.getUser();
-      if (data.user) await routeAfterLogin(data.user.id);
-      return;
     }
-
-    setLoading(false);
   };
 
   // ── Forgot password: success confirmation ────────────────────────────────
