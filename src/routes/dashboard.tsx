@@ -17,13 +17,15 @@ function Dashboard() {
 
   useEffect(() => {
     (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) { nav({ to: "/auth" }); return; }
+      // FIX: use getSession() (localStorage, instant) instead of getUser() (network call)
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      if (!user) { nav({ to: "/auth" }); return; }
 
       const { data: s } = await supabase
         .from("sellers")
         .select("slug")
-        .eq("user_id", u.user.id)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (!s) {
