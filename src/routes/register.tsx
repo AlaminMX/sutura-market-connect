@@ -65,14 +65,16 @@ function Register() {
 
   useEffect(() => {
     // Non-blocking: check if user already has a session/seller, but never redirect away.
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id);
+    // FIX: use getSession() (localStorage, instant) instead of getUser() (network call)
+    supabase.auth.getSession().then(async ({ data }) => {
+      const user = data.session?.user;
+      if (user) {
+        setUserId(user.id);
         setHasAccount(true);
         const { data: existing } = await supabase
           .from("sellers")
           .select("id, profile_photo_url, cover_photo_url")
-          .eq("user_id", data.user.id)
+          .eq("user_id", user.id)
           .maybeSingle();
         if (existing) {
           setSellerId(existing.id);
