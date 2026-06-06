@@ -108,18 +108,24 @@ function AdminPage() {
 
   // ── FIX: use getSession() (reads localStorage instantly) instead of getUser()
   // (getUser() makes a server-side network request — on refresh it could fail
-  //  before the token is refreshed, which was causing automatic logouts) ──
+  //  before the token is refreshed, which was causing automatic logouts)
+  // Also wrapped in try/catch so any error sets allowed=false instead of hanging forever.
   useEffect(() => {
     (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session?.user) { nav({ to: "/auth" }); return; }
-      const uid = sessionData.session.user.id;
-      const { data: role } = await supabase
-        .from("user_roles").select("role")
-        .eq("user_id", uid).eq("role", "admin").maybeSingle();
-      if (!role) { nav({ to: "/" }); return; }
-      setAllowed(true);
-      await loadAll();
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session?.user) { nav({ to: "/auth" }); return; }
+        const uid = sessionData.session.user.id;
+        const { data: role } = await supabase
+          .from("user_roles").select("role")
+          .eq("user_id", uid).eq("role", "admin").maybeSingle();
+        if (!role) { nav({ to: "/" }); return; }
+        setAllowed(true);
+        await loadAll();
+      } catch (err) {
+        console.error("Admin auth error:", err);
+        nav({ to: "/auth" });
+      }
     })();
   }, [nav]);
 
