@@ -1,14 +1,11 @@
 /**
  * TopBar.tsx
- * Header with logo, city-filter selector, sign-in button (guests only), and bookmark icon.
- *
- * FIX: City / State selector moved into the top-nav so it persists across pages
- * and is always visible. Selection is stored in localStorage (useCityFilter) and
- * picked up by any page that calls the same hook.
+ * Header with logo, city-filter selector, sign-in button (guests only),
+ * admin dashboard button (admins only), and bookmark icon.
  */
 
 import { Link } from "@tanstack/react-router";
-import { Bookmark, LogIn, MapPin } from "lucide-react";
+import { Bookmark, LogIn, MapPin, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useWishlistCount } from "@/lib/wishlist";
@@ -25,14 +22,25 @@ import {
 export function TopBar() {
   const count = useWishlistCount();
   const [isSignedIn, setIsSignedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { city, setCity } = useCityFilter();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       setIsSignedIn(!!data.session);
+      if (data.session?.user) {
+        const { data: role } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", data.session.user.id)
+          .eq("role", "admin")
+          .maybeSingle();
+        setIsAdmin(!!role);
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsSignedIn(!!session);
+      if (!session) setIsAdmin(false);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -86,6 +94,17 @@ export function TopBar() {
 
         {/* Right actions */}
         <div className="flex shrink-0 items-center gap-2">
+          {/* Admin dashboard button — only visible to admins */}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 text-xs font-medium text-primary shadow-warm transition hover:bg-primary/20 active:scale-95"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Admin</span>
+            </Link>
+          )}
+
           {!isSignedIn && (
             <Link
               to="/auth"
@@ -95,6 +114,7 @@ export function TopBar() {
               <span className="hidden sm:inline">Sign In</span>
             </Link>
           )}
+
           <Link
             to="/wishlist"
             aria-label={`Bookmarks${count > 0 ? ` (${count})` : ""}`}
