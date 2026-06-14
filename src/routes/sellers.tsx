@@ -11,14 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Users } from "lucide-react";
 import { NIGERIAN_CITIES } from "@/lib/categories";
 import { BackButton } from "@/components/BackButton";
-import { useCityFilter, ALL_CITIES } from "@/lib/cityFilter";
+import { useCity } from "@/lib/cityContext";
 
 export const Route = createFileRoute("/sellers")({ component: SellersPage });
 
 function SellersPage() {
   const [search, setSearch] = useState("");
-  // Pick up the city pre-selected in TopBar
-  const { city, setCity } = useCityFilter();
+  const { selectedCity: globalCity } = useCity();
+  const [city, setCity] = useState(globalCity !== "All" ? globalCity : "All cities");
   const [category, setCategory] = useState("All categories");
 
   const { data: sellers, isLoading } = useQuery({
@@ -28,6 +28,7 @@ function SellersPage() {
         .from("sellers")
         .select("id, slug, business_name, category, city, profile_photo_url, is_verified, rating")
         .eq("is_blocked", false)
+        .eq("verification_status", "approved")
         .order("is_verified", { ascending: false })
         .order("created_at", { ascending: false });
       if (error) throw error;
