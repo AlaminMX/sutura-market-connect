@@ -9,6 +9,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { BackButton } from "@/components/BackButton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { hausaFor, iconFor, NIGERIAN_CITIES } from "@/lib/categories";
+import { useCity } from "@/lib/cityContext";
 
 function prettifySlug(slug: string) {
   return slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -49,7 +50,8 @@ export const Route = createFileRoute("/category/$slug")({
 
 function CategoryPage() {
   const { slug } = Route.useParams();
-  const [city, setCity] = useState("All cities");
+  const { selectedCity: globalCity } = useCity();
+  const [city, setCity] = useState(globalCity !== "All" ? globalCity : "All cities");
 
   const { data: category } = useQuery({
     queryKey: ["category", slug],
@@ -68,7 +70,8 @@ function CategoryPage() {
         .from("sellers")
         .select("id, slug, business_name, category, city, profile_photo_url, is_verified, rating")
         .eq("category", category!.name)
-        .eq("is_blocked", false);
+        .eq("is_blocked", false)
+        .eq("verification_status", "approved");
       if (city !== "All cities") q = q.eq("city", city);
       const { data, error } = await q.order("is_verified", { ascending: false });
       if (error) throw error;
@@ -82,10 +85,11 @@ function CategoryPage() {
     queryFn: async () => {
       let qb = supabase
         .from("products")
-        .select("id, name, price, image_url, stock_status, status, seller_id, sellers!inner(business_name, city, slug, whatsapp_number, category, is_blocked)")
+        .select("id, name, price, image_url, stock_status, status, seller_id, sellers!inner(business_name, city, slug, whatsapp_number, category, is_blocked, verification_status)")
         .eq("sellers.category", category!.name)
         .eq("status", "active")
         .eq("sellers.is_blocked", false)
+        .eq("sellers.verification_status", "approved")
         .order("created_at", { ascending: false })
         .limit(24);
       if (city !== "All cities") qb = qb.eq("sellers.city", city);
