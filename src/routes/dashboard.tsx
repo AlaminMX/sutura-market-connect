@@ -1,8 +1,9 @@
 /**
  * dashboard.tsx
- * The seller dashboard is now unified with the store page (store.$slug.tsx).
- * This route redirects authenticated sellers to their store page, and
- * non-sellers to /register.  Old bookmarks to /dashboard continue to work.
+ * Redirects authenticated sellers to their store page.
+ * FIX: Uses getSession() (reads localStorage instantly) instead of getUser()
+ * (which makes a server-side network request and could hang/fail on refresh,
+ * causing the infinite loading spinner).
  */
 
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -17,15 +18,18 @@ function Dashboard() {
 
   useEffect(() => {
     (async () => {
-      // FIX: use getSession() (localStorage, instant) instead of getUser() (network call)
+      // FIX: getSession reads localStorage instantly — no network hang
       const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
-      if (!user) { nav({ to: "/auth" }); return; }
+      if (!sessionData.session?.user) {
+        nav({ to: "/auth" });
+        return;
+      }
 
+      const uid = sessionData.session.user.id;
       const { data: s } = await supabase
         .from("sellers")
         .select("slug")
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .maybeSingle();
 
       if (!s) {
