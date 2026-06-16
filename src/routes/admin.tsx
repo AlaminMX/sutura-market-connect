@@ -812,30 +812,34 @@ function AdminPage() {
           <section className="mt-6">
             <h2 className="mb-2 font-serif text-xl">Homepage Sections</h2>
             <p className="mb-4 text-xs text-muted-foreground">Edit text, show/hide, and reorder sections on the homepage.</p>
-            <div className="space-y-3">
-              {sections.map((s, idx) => (
-                <div key={s.id} className={`rounded-xl border bg-card p-4 shadow-warm ${!s.is_visible ? "opacity-50" : ""}`}>
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium">{s.title}</p>
-                      {s.subtitle && <p className="text-xs text-muted-foreground">{s.subtitle}</p>}
-                      {s.content  && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{s.content}</p>}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button onClick={() => moveSec(s.id, "up")} disabled={idx === 0}
-                        className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
-                      <button onClick={() => moveSec(s.id, "down")} disabled={idx === sections.length - 1}
-                        className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
-                      <button onClick={() => toggleSectionVisible(s)} className="rounded p-1 hover:bg-muted">
-                        {s.is_visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-                      </button>
-                      <button onClick={() => openEditSection(s)} className="rounded p-1 hover:bg-muted">
-                        <Pencil className="h-4 w-4" /></button>
+            {sectionsState === "loading" && <SectionSkeleton />}
+            {sectionsState === "error" && <SectionError label="homepage sections" onRetry={loadSections} />}
+            {sectionsState === "ok" && (
+              <div className="space-y-3">
+                {sections.map((s, idx) => (
+                  <div key={s.id} className={`rounded-xl border bg-card p-4 shadow-warm ${!s.is_visible ? "opacity-50" : ""}`}>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium">{s.title}</p>
+                        {s.subtitle && <p className="text-xs text-muted-foreground">{s.subtitle}</p>}
+                        {s.content  && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{s.content}</p>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button onClick={() => moveSec(s.id, "up")} disabled={idx === 0}
+                          className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                        <button onClick={() => moveSec(s.id, "down")} disabled={idx === sections.length - 1}
+                          className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                        <button onClick={() => toggleSectionVisible(s)} className="rounded p-1 hover:bg-muted">
+                          {s.is_visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
+                        </button>
+                        <button onClick={() => openEditSection(s)} className="rounded p-1 hover:bg-muted">
+                          <Pencil className="h-4 w-4" /></button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
