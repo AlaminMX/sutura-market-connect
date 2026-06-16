@@ -105,14 +105,31 @@ function VerifBadge({ status }: { status: string }) {
 
 function AdminPage() {
   const nav = useNavigate();
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const { user, isAdmin, isReady } = useAuth();
+  const allowed = isReady && !!user && isAdmin;
 
+  // Auth gate — runs after auth resolves. Never blocks indefinitely.
+  useEffect(() => {
+    if (!isReady) return;
+    if (!user) { nav({ to: "/auth", replace: true }); return; }
+    if (!isAdmin) { nav({ to: "/", replace: true }); return; }
+  }, [isReady, user, isAdmin, nav]);
+
+  // ── Per-section state (independent loading + error per dataset) ──
   const [sellers,    setSellers]    = useState<SellerRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products,   setProducts]   = useState<ProductRow[]>([]);
   const [sections,   setSections]   = useState<Section[]>([]);
   const [vouches,    setVouches]    = useState<VouchRow[]>([]);
   const [stats,      setStats]      = useState({ sellers: 0, products: 0, clicks: 0 });
+
+  const [sellersState,    setSellersState]    = useState<LoadState>("loading");
+  const [categoriesState, setCategoriesState] = useState<LoadState>("loading");
+  const [productsState,   setProductsState]   = useState<LoadState>("loading");
+  const [sectionsState,   setSectionsState]   = useState<LoadState>("loading");
+  const [vouchesState,    setVouchesState]    = useState<LoadState>("loading");
+  const [statsState,      setStatsState]      = useState<LoadState>("loading");
+
   const [activeTab,  setActiveTab]  = useState<"sellers"|"categories"|"products"|"vouches"|"homepage">("sellers");
 
   // Category editor state
@@ -138,105 +155,106 @@ function AdminPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejectSaving, setRejectSaving] = useState(false);
 
-  // ── FIX: use getSession() (reads localStorage instantly) instead of getUser()
-  // (getUser() makes a server-side network request — on refresh it could fail
-  //  before the token is refreshed, which was causing automatic logouts)
-  // Auth strategy:
-  // 1. getSession() reads localStorage instantly (no network, no lock wait)
-  // 2. onAuthStateChange fires INITIAL_SESSION shortly after, and TOKEN_REFRESHED
-  //    when the token is silently refreshed — we re-verify on those events too.
-  // 3. SIGNED_OUT redirects to /auth.
-  // We only redirect to /auth if getSession returns nothing AND no
-  // INITIAL_SESSION fires within 4 s (handles the brief moment on refresh where
-  // the session hasn't been hydrated from localStorage yet).
-  useEffect(() => {
-    let isMounted  = true;
-    let didAuth    = false;
-    let fallbackId: ReturnType<typeof setTimeout>;
+  // ── Resilient per-section loaders. Each runs independently — one failure
+  //    no longer blocks the rest of the dashboard.
+  const ABORT = () => AbortSignal.timeout(8000);
 
-    const doAuth = async (session: { user: { id: string } }) => {
-      if (didAuth || !isMounted) return;
-      didAuth = true;
-      clearTimeout(fallbackId);
-      try {
-        const { data: role } = await supabase
-          .from("user_roles").select("role")
-          .eq("user_id", session.user.id).eq("role", "admin").maybeSingle();
-        if (!isMounted) return;
-        if (!role) { nav({ to: "/" }); return; }
-        setAllowed(true);
-        await loadAll();
-      } catch (err) {
-        console.error("Admin auth error:", err);
-        if (isMounted) nav({ to: "/auth" });
-      }
-    };
+  const loadSellers = useCallback(async () => {
+    setSellersState("loading");
+    try {
+      const { data, error } = await supabase
+        .from("sellers")
+        .select("id, business_name, slug, category, city, is_verified, is_blocked, verification_status, rejection_reason")
+        .order("created_at", { ascending: false })
+        .abortSignal(ABORT());
+      if (error) throw error;
+      setSellers((data ?? []) as SellerRow[]);
+      setSellersState("ok");
+    } catch (err) {
+      console.warn("[admin] sellers failed:", err);
+      setSellersState("error");
+    }
+  }, []);
 
-    // Immediate check from localStorage
-    supabase.auth.getSession().then(({ data }) => {
-      if (!isMounted) return;
-      if (data.session) doAuth(data.session);
-    });
+  const loadCategories = useCallback(async () => {
+    setCategoriesState("loading");
+    try {
+      const { data, error } = await supabase
+        .from("categories").select("*").order("sort_order").abortSignal(ABORT());
+      if (error) throw error;
+      setCategories((data ?? []) as Category[]);
+      setCategoriesState("ok");
+    } catch (err) {
+      console.warn("[admin] categories failed:", err);
+      setCategoriesState("error");
+    }
+  }, []);
 
-    // Listen for auth state events (handles refresh + INITIAL_SESSION)
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isMounted) return;
-      if (event === "SIGNED_OUT") { nav({ to: "/auth" }); return; }
-      // INITIAL_SESSION can fire with null when the access token is expired but
-      // the refresh token is still valid — Supabase fires TOKEN_REFRESHED shortly
-      // after. Only call doAuth when we actually have a session, so we don't
-      // incorrectly redirect to /auth before the token refresh completes.
-      if (session?.user && ["INITIAL_SESSION", "SIGNED_IN", "TOKEN_REFRESHED"].includes(event)) {
-        await doAuth(session);
-      }
-    });
-
-    // Fallback: if nothing loaded in 5 s, give up and go to /auth
-    fallbackId = setTimeout(() => {
-      if (!didAuth && isMounted) nav({ to: "/auth" });
-    }, 5000);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(fallbackId);
-      listener.subscription.unsubscribe();
-    };
-  }, [nav]);
-
-  const loadAll = async () => {
-    const [
-      { data: sl },
-      { count: pc },
-      { count: cc },
-      { data: cats },
-      { data: prods },
-      { data: secs },
-    ] = await Promise.all([
-      // ── FIX: include verification_status + rejection_reason in seller fetch ──
-      supabase.from("sellers").select(
-        "id, business_name, slug, category, city, is_verified, is_blocked, verification_status, rejection_reason"
-      ).order("created_at", { ascending: false }),
-      supabase.from("products").select("id", { count: "exact", head: true }),
-      supabase.from("whatsapp_clicks").select("id", { count: "exact", head: true }),
-      supabase.from("categories").select("*").order("sort_order"),
-      supabase.from("products")
+  const loadProducts = useCallback(async () => {
+    setProductsState("loading");
+    try {
+      const { data, error } = await supabase
+        .from("products")
         .select("id, name, price, image_url, is_featured, featured_order, status, sellers(business_name, city)")
-        .order("is_featured", { ascending: false }).order("featured_order").limit(100),
-      supabase.from("homepage_sections").select("*").order("sort_order"),
-    ]);
-    setSellers(sl ?? []);
-    setCategories((cats ?? []) as Category[]);
-    setProducts((prods ?? []) as any);
-    setSections(secs ?? []);
-    setStats({ sellers: sl?.length ?? 0, products: pc ?? 0, clicks: cc ?? 0 });
+        .order("is_featured", { ascending: false })
+        .order("featured_order")
+        .limit(100)
+        .abortSignal(ABORT());
+      if (error) throw error;
+      setProducts((data ?? []) as any);
+      setProductsState("ok");
+    } catch (err) {
+      console.warn("[admin] products failed:", err);
+      setProductsState("error");
+    }
+  }, []);
 
-    // Load vouch analytics
-    const { data: vData } = await supabase
-      .from("vouches")
-      .select("vouched_seller_id, sellers!vouches_vouched_seller_id_fkey(business_name)");
-    if (vData) {
+  const loadSections = useCallback(async () => {
+    setSectionsState("loading");
+    try {
+      const { data, error } = await supabase
+        .from("homepage_sections").select("*").order("sort_order").abortSignal(ABORT());
+      if (error) throw error;
+      setSections(data ?? []);
+      setSectionsState("ok");
+    } catch (err) {
+      console.warn("[admin] homepage_sections failed:", err);
+      setSectionsState("error");
+    }
+  }, []);
+
+  const loadStats = useCallback(async () => {
+    setStatsState("loading");
+    try {
+      const [sellersCount, productsCount, clicksCount] = await Promise.allSettled([
+        supabase.from("sellers").select("id", { count: "exact", head: true }).abortSignal(ABORT()),
+        supabase.from("products").select("id", { count: "exact", head: true }).abortSignal(ABORT()),
+        supabase.from("whatsapp_clicks").select("id", { count: "exact", head: true }).abortSignal(ABORT()),
+      ]);
+      const pick = (r: PromiseSettledResult<{ count: number | null }>): number =>
+        r.status === "fulfilled" ? (r.value.count ?? 0) : 0;
+      setStats({
+        sellers:  pick(sellersCount as any),
+        products: pick(productsCount as any),
+        clicks:   pick(clicksCount as any),
+      });
+      setStatsState("ok");
+    } catch (err) {
+      console.warn("[admin] stats failed:", err);
+      setStatsState("error");
+    }
+  }, []);
+
+  const loadVouches = useCallback(async () => {
+    setVouchesState("loading");
+    try {
+      const { data, error } = await supabase
+        .from("vouches")
+        .select("vouched_seller_id, sellers!vouches_vouched_seller_id_fkey(business_name)")
+        .abortSignal(ABORT());
+      if (error) throw error;
       const map = new Map<string, { name: string; count: number }>();
-      for (const row of vData as any[]) {
+      for (const row of (data ?? []) as any[]) {
         const id = row.vouched_seller_id;
         const name = row.sellers?.business_name ?? "Unknown";
         if (!map.has(id)) map.set(id, { name, count: 0 });
@@ -245,8 +263,31 @@ function AdminPage() {
       setVouches(Array.from(map.entries())
         .map(([seller_id, { name, count }]) => ({ seller_id, seller_name: name, vouch_count: count }))
         .sort((a, b) => b.vouch_count - a.vouch_count));
+      setVouchesState("ok");
+    } catch (err) {
+      console.warn("[admin] vouches failed:", err);
+      setVouchesState("error");
     }
-  };
+  }, []);
+
+  // Fire all loaders independently once auth resolves.
+  useEffect(() => {
+    if (!allowed) return;
+    void loadSellers();
+    void loadCategories();
+    void loadProducts();
+    void loadSections();
+    void loadStats();
+    void loadVouches();
+  }, [allowed, loadSellers, loadCategories, loadProducts, loadSections, loadStats, loadVouches]);
+
+  // Convenience: reload affected sections after mutations.
+  const loadAll = useCallback(async () => {
+    await Promise.allSettled([
+      loadSellers(), loadCategories(), loadProducts(), loadSections(), loadStats(), loadVouches(),
+    ]);
+  }, [loadSellers, loadCategories, loadProducts, loadSections, loadStats, loadVouches]);
+
 
   // ── Seller verification approval ──
   const approveSeller = async (id: string, name: string) => {
