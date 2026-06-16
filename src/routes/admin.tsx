@@ -16,8 +16,9 @@
  */
 
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/authContext";
 import { TopBar } from "@/components/TopBar";
 import { ImageUploader } from "@/components/ImageUploader";
 import { Button } from "@/components/ui/button";
@@ -31,10 +32,41 @@ import {
   BadgeCheck, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
   Star, StarOff, Eye, EyeOff, Loader2, GripVertical,
   ShieldOff, ShieldCheck, Users, CheckCircle2, XCircle, Clock,
+  AlertCircle, RefreshCw,
 } from "lucide-react";
 import { PageLoader } from "@/components/LoadingSpinner";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
+
+type LoadState = "loading" | "ok" | "error";
+
+/** Tiny inline retry card for a section that failed to load. */
+function SectionError({ label, onRetry }: { label: string; onRetry: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+      <div className="flex items-center gap-2 text-destructive">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Couldn't load {label}.</span>
+      </div>
+      <button
+        onClick={onRetry}
+        className="inline-flex items-center gap-1 rounded-full border border-destructive/30 px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+      >
+        <RefreshCw className="h-3 w-3" /> Retry
+      </button>
+    </div>
+  );
+}
+
+function SectionSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="h-16 animate-pulse rounded-xl border bg-muted/40" />
+      ))}
+    </div>
+  );
+}
 
 interface SellerRow {
   id: string; business_name: string; slug: string;
