@@ -3,8 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 function createSupabaseClient() {
-  // Use import.meta.env for client-side (Vite build-time replacement)
-  // Fall back to process.env for SSR (server-side rendering)
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
@@ -13,9 +11,7 @@ function createSupabaseClient() {
       ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
       ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY'] : []),
     ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
-    console.error(`[Supabase] ${message}`);
-    throw new Error(message);
+    throw new Error(`Missing Supabase env: ${missing.join(', ')}`);
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -23,18 +19,44 @@ function createSupabaseClient() {
       storage: typeof window !== 'undefined' ? localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
-    }
+      detectSessionInUrl: true,
+
+      // ─────────────────────────────────────────────────────────────────────
+      // ROOT-CAUSE FIX: The Supabase client uses the Web Locks API
+      // (navigator.locks) to serialise token-refresh across tabs.
+      // When a page is REFRESHED the old page briefly still holds this lock;
+      // the new page waits for it and EVERY Supabase call queues behind the
+      // wait — queries, auth.getSession(), signInWithPassword — everything
+      // hangs until the lock is released (which can be many seconds or never).
+      //
+      // Bypassing the lock makes the refresh immediate and non-blocking.
+      // ─────────────────────────────────────────────────────────────────────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => fn() as any,
+    },
+
+    // Global 15-second fetch timeout so no request can hang forever even if
+    // something else goes wrong.
+    global: {
+      fetch: (url: RequestInfo | URL, init: RequestInit = {}) => {
+        // Respect any existing signal (e.g. AbortSignal.timeout from queries)
+        if (init.signal) return fetch(url, init);
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 15_000);
+        return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(tid));
+      },
+    },
   });
 }
 
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
-export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>, {
-  get(_, prop, receiver) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const supabase: ReturnType<typeof createSupabaseClient> = new Proxy({} as any, {
+  get(_, prop: string) {
     if (!_supabase) _supabase = createSupabaseClient();
-    return Reflect.get(_supabase, prop, receiver);
+    // Bind to the real instance so internal `this` references work correctly
+    const value = (_supabase as any)[prop];
+    return typeof value === 'function' ? value.bind(_supabase) : value;
   },
 });
-
