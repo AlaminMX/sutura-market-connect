@@ -9,13 +9,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 export function TopBar() {
   const count = useWishlistCount();
-  const [isSignedIn, setIsSignedIn] = useState(false);
+  // null = auth not yet resolved (suppress Sign In button entirely to prevent flash)
+  // false = confirmed signed out, true = confirmed signed in
+  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
   const { selectedCity, setSelectedCity } = useCity();
 
   useEffect(() => {
     // getSession reads localStorage instantly — no network, no lock wait
     supabase.auth.getSession().then(({ data }) => setIsSignedIn(!!data.session));
-    const { data: l } = supabase.auth.onAuthStateChange((_e, s) => setIsSignedIn(!!s));
+    // Only update on real auth transitions, not transient token-refresh nulls
+    const { data: l } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        setIsSignedIn(true);
+      } else if (event === "SIGNED_OUT") {
+        setIsSignedIn(false);
+      }
+    });
     return () => l.subscription.unsubscribe();
   }, []);
 
