@@ -29,7 +29,12 @@ function Dashboard() {
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
-      if (event === "SIGNED_OUT" || (!session && event === "INITIAL_SESSION")) {
+      // Only redirect to /auth on an explicit sign-out.
+      // INITIAL_SESSION can arrive with null before the localStorage token is
+      // confirmed (e.g. on a hard refresh), so we must NOT treat null here as
+      // "logged out" — the getSession() call above and the 5-s fallback handle
+      // the unauthenticated case safely.
+      if (event === "SIGNED_OUT") {
         nav({ to: "/auth", replace: true });
         return;
       }
