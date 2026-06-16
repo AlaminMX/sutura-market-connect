@@ -95,6 +95,10 @@ function StorePage() {
   const [isOwner, setIsOwner]       = useState(false);
   const [isAdmin, setIsAdmin]       = useState(false);
   const [editMode, setEditMode]     = useState(false);
+  // authReady: false until we've read the session at least once from localStorage.
+  // Prevents the page from rendering as a public/visitor view for one frame
+  // before we know the user is actually the owner.
+  const [authReady, setAuthReady]   = useState(false);
 
   // Vouch state (Instagram-style toggle)
   const [hasVouched, setHasVouched]     = useState(false);
@@ -148,6 +152,8 @@ function StorePage() {
     //  causing the owner to see a public view and feel "logged out")
     supabase.auth.getSession().then(({ data }) => {
       if (data.session?.user) initAuth(data.session.user.id);
+      // Mark auth as resolved so the page can render correctly on first paint
+      setAuthReady(true);
     });
 
     // Keep in sync if auth changes mid-session
@@ -245,7 +251,11 @@ function StorePage() {
     }
   }, [seller, userId]);
 
-  if (isLoading) return <SectionLoader label="Loading store…" />;
+  // Wait until we've read localStorage auth state before rendering.
+  // This prevents a one-frame flash where the owner sees the public view
+  // because isOwner hasn't been set yet. getSession() is synchronous from
+  // localStorage so this resolves in <1ms — imperceptible to the user.
+  if (!authReady || isLoading) return <SectionLoader label="Loading store…" />;
   if (!seller) return (
     <div className="min-h-screen bg-background">
       <TopBar />
