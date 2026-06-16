@@ -109,24 +109,66 @@ function AdminPage() {
   // ── FIX: use getSession() (reads localStorage instantly) instead of getUser()
   // (getUser() makes a server-side network request — on refresh it could fail
   //  before the token is refreshed, which was causing automatic logouts)
-  // Also wrapped in try/catch so any error sets allowed=false instead of hanging forever.
+  // Auth strategy:
+  // 1. getSession() reads localStorage instantly (no network, no lock wait)
+  // 2. onAuthStateChange fires INITIAL_SESSION shortly after, and TOKEN_REFRESHED
+  //    when the token is silently refreshed — we re-verify on those events too.
+  // 3. SIGNED_OUT redirects to /auth.
+  // We only redirect to /auth if getSession returns nothing AND no
+  // INITIAL_SESSION fires within 4 s (handles the brief moment on refresh where
+  // the session hasn't been hydrated from localStorage yet).
   useEffect(() => {
-    (async () => {
+    let isMounted  = true;
+    let didAuth    = false;
+    let fallbackId: ReturnType<typeof setTimeout>;
+
+    const doAuth = async (session: { user: { id: string } } | null) => {
+      if (didAuth || !isMounted) return;
+      if (!session?.user) {
+        if (isMounted) nav({ to: "/auth" });
+        return;
+      }
+      didAuth = true;
+      clearTimeout(fallbackId);
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (!sessionData.session?.user) { nav({ to: "/auth" }); return; }
-        const uid = sessionData.session.user.id;
         const { data: role } = await supabase
           .from("user_roles").select("role")
-          .eq("user_id", uid).eq("role", "admin").maybeSingle();
+          .eq("user_id", session.user.id).eq("role", "admin").maybeSingle();
+        if (!isMounted) return;
         if (!role) { nav({ to: "/" }); return; }
         setAllowed(true);
         await loadAll();
       } catch (err) {
         console.error("Admin auth error:", err);
-        nav({ to: "/auth" });
+        if (isMounted) nav({ to: "/auth" });
       }
-    })();
+    };
+
+    // Immediate check from localStorage
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) return;
+      if (data.session) doAuth(data.session);
+    });
+
+    // Listen for auth state events (handles refresh + INITIAL_SESSION)
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+      if (event === "SIGNED_OUT") { nav({ to: "/auth" }); return; }
+      if (["INITIAL_SESSION", "SIGNED_IN", "TOKEN_REFRESHED"].includes(event)) {
+        await doAuth(session);
+      }
+    });
+
+    // Fallback: if nothing loaded in 5 s, give up and go to /auth
+    fallbackId = setTimeout(() => {
+      if (!didAuth && isMounted) nav({ to: "/auth" });
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackId);
+      listener.subscription.unsubscribe();
+    };
   }, [nav]);
 
   const loadAll = async () => {
