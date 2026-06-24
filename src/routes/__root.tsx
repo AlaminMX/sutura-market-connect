@@ -10,7 +10,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { LangProvider } from "@/lib/i18n";
 import { CityProvider } from "@/lib/cityContext";
 import { AuthProvider } from "@/lib/authContext";
-import { SellerBottomNav } from "@/components/SellerBottomNav";
+import { SellerProfileProvider } from "@/lib/sellerProfile";
+import { BottomNav } from "@/components/BottomNav";
 
 import appCss from "../styles.css?url";
 
@@ -115,15 +116,17 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <LangProvider>
-          <CityProvider>
-            <main>
-              <Outlet />
-            </main>
-            <SellerBottomNav />
-            <Toaster />
-          </CityProvider>
-        </LangProvider>
+        <SellerProfileProvider>
+          <LangProvider>
+            <CityProvider>
+              <main>
+                <Outlet />
+              </main>
+              <BottomNav />
+              <Toaster />
+            </CityProvider>
+          </LangProvider>
+        </SellerProfileProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

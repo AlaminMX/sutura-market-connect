@@ -1,13 +1,12 @@
 /**
- * ProductCard — editorial bento tile.
- * Wishlist heart persists to localStorage.
- * Admin users see an inline Block / Unblock button.
+ * ProductCard — image, name, price/"Price on request", seller link, wishlist heart.
+ * Whole card navigates to /product/:id (except the heart and admin block button).
+ * WhatsApp CTA lives on the product detail page and wishlist, not on the card.
  */
 
-import { useState, useEffect } from "react";
-import { buildWhatsAppUrl, trackClick } from "@/lib/whatsapp";
-import { MessageCircle, Heart, ShieldOff, ShieldCheck } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Heart, ShieldOff, ShieldCheck } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { toggleWishlist, useIsWishlisted } from "@/lib/wishlist";
@@ -15,7 +14,7 @@ import { toggleWishlist, useIsWishlisted } from "@/lib/wishlist";
 export interface ProductCardProps {
   id: string;
   name: string;
-  price: number;
+  price: number | null;
   image_url?: string | null;
   seller_id: string;
   seller_name?: string;
@@ -24,15 +23,12 @@ export interface ProductCardProps {
   whatsapp_number: string;
   stock_status?: "available" | "low_stock" | "sold_out" | string;
   status?: "active" | "blocked" | string;
-  hideWhatsApp?: boolean;
   isAdmin?: boolean;
   onBlockToggle?: (id: string, newStatus: "active" | "blocked") => void;
 }
 
 export function ProductCard(p: ProductCardProps) {
-  const storeUrl = p.seller_slug && typeof window !== "undefined"
-    ? `${window.location.origin}/store/${p.seller_slug}` : undefined;
-  const waUrl = buildWhatsAppUrl(p.whatsapp_number, p.name, storeUrl);
+  const nav = useNavigate();
   const soldOut = p.stock_status === "sold_out";
   const low = p.stock_status === "low_stock";
   const isBlocked = p.status === "blocked";
@@ -46,7 +42,7 @@ export function ProductCard(p: ProductCardProps) {
   const handleSave = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const nowSaved = toggleWishlist({
-      id: p.id, name: p.name, price: p.price,
+      id: p.id, name: p.name, price: Number(p.price ?? 0),
       image_url: p.image_url ?? null, seller_id: p.seller_id,
       seller_name: p.seller_name, seller_city: p.seller_city,
       seller_slug: p.seller_slug, whatsapp_number: p.whatsapp_number,
@@ -67,9 +63,14 @@ export function ProductCard(p: ProductCardProps) {
     p.onBlockToggle?.(p.id, newStatus);
   };
 
+  const goToProduct = () => nav({ to: "/product/$id", params: { id: p.id } });
+
   return (
     <div
-      className={`group relative flex flex-col overflow-hidden rounded-3xl border border-border-warm bg-card p-3 transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-warm-lg ${isBlocked ? "opacity-50" : ""}`}
+      role="link" tabIndex={0}
+      onClick={goToProduct}
+      onKeyDown={(e) => { if (e.key === "Enter") goToProduct(); }}
+      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border border-border-warm bg-card p-3 transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-warm-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isBlocked ? "opacity-50" : ""}`}
     >
       {p.isAdmin && localStatus === "blocked" && (
         <div className="absolute inset-x-3 top-3 z-20 rounded-full bg-destructive/90 py-1 text-center text-[10px] font-bold uppercase tracking-wider text-white">
@@ -80,25 +81,22 @@ export function ProductCard(p: ProductCardProps) {
       <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-surface-warm">
         {p.image_url ? (
           <img
-            src={p.image_url}
-            alt={p.name}
-            loading="lazy"
-            decoding="async"
+            src={p.image_url} alt={p.name} loading="lazy" decoding="async"
             className={`h-full w-full object-cover transition duration-500 group-hover:scale-105 ${soldOut ? "opacity-50 grayscale" : ""}`}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs italic text-muted-foreground">No image</div>
         )}
         {soldOut && (
-          <span className="absolute left-2 top-2 rounded-full bg-espresso/90 px-2 py-0.5 text-[10px] font-medium text-background">Sold out</span>
+          <span className="absolute left-2 top-2 rounded-full bg-espresso/90 px-2 py-0.5 text-[10px] font-medium text-background">Out of stock</span>
         )}
         {low && !soldOut && (
           <span className="absolute left-2 top-2 rounded-full bg-sage px-2 py-0.5 text-[10px] font-medium text-white">Low stock</span>
         )}
         <button
-          onClick={handleSave}
+          type="button" onClick={handleSave}
           aria-label={saved ? "Remove from wishlist" : "Save to wishlist"}
-          className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur transition hover:scale-110 active:scale-95 ${saved ? "text-primary" : "text-espresso/60 hover:text-primary"}`}
+          className={`absolute right-2 top-2 flex h-10 w-10 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur transition hover:scale-110 active:scale-95 ${saved ? "text-primary" : "text-espresso/60 hover:text-primary"}`}
         >
           <Heart className={`h-4 w-4 ${saved ? "fill-primary" : ""}`} />
         </button>
@@ -109,20 +107,30 @@ export function ProductCard(p: ProductCardProps) {
         {(p.seller_name || p.seller_city) && (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {p.seller_slug ? (
-              <Link to="/store/$slug" params={{ slug: p.seller_slug }} className="hover:text-primary hover:underline">
-                {p.seller_name}
-              </Link>
+              <Link
+                to="/store/$slug" params={{ slug: p.seller_slug }}
+                onClick={(e) => e.stopPropagation()}
+                className="hover:text-primary hover:underline"
+              >{p.seller_name}</Link>
             ) : p.seller_name}
-            {p.seller_name && p.seller_city ? " · " : ""}{p.seller_city}
+            {p.seller_name && p.seller_city ? " · " : ""}
+            {p.seller_city && (
+              <span className="inline-flex items-center rounded-full bg-sage/15 px-1.5 text-[10px] font-medium text-sage-deep">
+                {p.seller_city}
+              </span>
+            )}
           </p>
         )}
-        <p className="mt-2 font-display text-lg text-sage-deep">₦{Number(p.price).toLocaleString()}</p>
+        <p className="mt-2 font-display text-lg text-sage-deep">
+          {p.price != null && Number(p.price) > 0
+            ? `₦${Number(p.price).toLocaleString()}`
+            : <span className="text-sm italic text-muted-foreground">Price on request</span>}
+        </p>
 
-        {p.isAdmin ? (
+        {p.isAdmin && (
           <button
-            onClick={handleBlock}
-            disabled={blocking}
-            className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-medium transition ${
+            type="button" onClick={handleBlock} disabled={blocking}
+            className={`mt-3 flex w-full min-h-[44px] items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-medium transition ${
               localStatus === "blocked"
                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                 : "bg-destructive/10 text-destructive hover:bg-destructive/20"
@@ -132,19 +140,7 @@ export function ProductCard(p: ProductCardProps) {
               ? <><ShieldCheck className="h-3.5 w-3.5" /> Unblock</>
               : <><ShieldOff className="h-3.5 w-3.5" /> Block</>}
           </button>
-        ) : soldOut ? (
-          <div className="mt-3 flex w-full items-center justify-center rounded-full bg-muted px-3 py-2 text-sm font-medium text-muted-foreground">Sold out</div>
-        ) : !p.hideWhatsApp ? (
-          <a
-            href={waUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => trackClick(p.seller_id, p.id)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full bg-espresso px-3 py-2 text-sm font-medium text-background transition hover:bg-espresso/90"
-          >
-            <MessageCircle className="h-4 w-4" /> WhatsApp vendor
-          </a>
-        ) : null}
+        )}
       </div>
     </div>
   );

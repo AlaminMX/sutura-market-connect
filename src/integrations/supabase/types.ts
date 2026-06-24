@@ -106,6 +106,8 @@ export type Database = {
       }
       homepage_sections: {
         Row: {
+          body_en: string | null
+          body_ha: string | null
           content: string | null
           created_at: string
           id: string
@@ -113,10 +115,16 @@ export type Database = {
           key: string
           sort_order: number
           subtitle: string | null
+          subtitle_en: string | null
+          subtitle_ha: string | null
           title: string
+          title_en: string | null
+          title_ha: string | null
           updated_at: string
         }
         Insert: {
+          body_en?: string | null
+          body_ha?: string | null
           content?: string | null
           created_at?: string
           id?: string
@@ -124,10 +132,16 @@ export type Database = {
           key: string
           sort_order?: number
           subtitle?: string | null
+          subtitle_en?: string | null
+          subtitle_ha?: string | null
           title: string
+          title_en?: string | null
+          title_ha?: string | null
           updated_at?: string
         }
         Update: {
+          body_en?: string | null
+          body_ha?: string | null
           content?: string | null
           created_at?: string
           id?: string
@@ -135,7 +149,11 @@ export type Database = {
           key?: string
           sort_order?: number
           subtitle?: string | null
+          subtitle_en?: string | null
+          subtitle_ha?: string | null
           title?: string
+          title_en?: string | null
+          title_ha?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -149,9 +167,11 @@ export type Database = {
           featured_order: number
           id: string
           image_url: string | null
+          image_urls: string[]
           is_featured: boolean
           name: string
-          price: number
+          price: number | null
+          price_updated_at: string | null
           seller_id: string
           status: string
           stock_status: string
@@ -164,9 +184,11 @@ export type Database = {
           featured_order?: number
           id?: string
           image_url?: string | null
+          image_urls?: string[]
           is_featured?: boolean
           name: string
-          price: number
+          price?: number | null
+          price_updated_at?: string | null
           seller_id: string
           status?: string
           stock_status?: string
@@ -179,9 +201,11 @@ export type Database = {
           featured_order?: number
           id?: string
           image_url?: string | null
+          image_urls?: string[]
           is_featured?: boolean
           name?: string
-          price?: number
+          price?: number | null
+          price_updated_at?: string | null
           seller_id?: string
           status?: string
           stock_status?: string
