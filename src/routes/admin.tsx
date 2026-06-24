@@ -6,7 +6,8 @@
  *   3. Category management — now with image upload (replaces emoji)
  *   4. Products management — inline block/unblock + featured control
  *   5. Homepage sections management
- *   6. Vouch analytics — count per seller + voucher list
+ *   6. Vouch analytics — count per seller + voucher list + auto-verification threshold
+ *   7. Cities management — CRUD for cities_of_business
  *
  * FIXES:
  *  - Auth uses getSession() (localStorage) instead of getUser() (network request),
@@ -20,6 +21,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/authContext";
 import { TopBar } from "@/components/TopBar";
+import { BottomNav } from "@/components/BottomNav";
 import { ImageUploader } from "@/components/ImageUploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +34,7 @@ import {
   BadgeCheck, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
   Star, StarOff, Eye, EyeOff, Loader2, GripVertical,
   ShieldOff, ShieldCheck, Users, CheckCircle2, XCircle, Clock,
-  AlertCircle, RefreshCw,
+  AlertCircle, RefreshCw, MapPin, Save,
 } from "lucide-react";
 import { PageLoader } from "@/components/LoadingSpinner";
 
@@ -82,6 +84,7 @@ interface ProductRow {
 interface Section    { id: string; key: string; title: string; subtitle: string | null; content: string | null; sort_order: number; is_visible: boolean; }
 interface VouchRow   { seller_id: string; seller_name: string; vouch_count: number; }
 interface VoucherDetail { voucher_seller_id: string; business_name: string; created_at: string; }
+interface CityRow    { id: string; name: string; state: string; slug: string; is_active: boolean; sort_order: number; }
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
@@ -121,6 +124,7 @@ function AdminPage() {
   const [products,   setProducts]   = useState<ProductRow[]>([]);
   const [sections,   setSections]   = useState<Section[]>([]);
   const [vouches,    setVouches]    = useState<VouchRow[]>([]);
+  const [cities,     setCities]     = useState<CityRow[]>([]);
   const [stats,      setStats]      = useState({ sellers: 0, products: 0, clicks: 0 });
 
   const [sellersState,    setSellersState]    = useState<LoadState>("loading");
@@ -128,9 +132,10 @@ function AdminPage() {
   const [productsState,   setProductsState]   = useState<LoadState>("loading");
   const [sectionsState,   setSectionsState]   = useState<LoadState>("loading");
   const [vouchesState,    setVouchesState]    = useState<LoadState>("loading");
+  const [citiesState,     setCitiesState]     = useState<LoadState>("loading");
   const [statsState,      setStatsState]      = useState<LoadState>("loading");
 
-  const [activeTab,  setActiveTab]  = useState<"sellers"|"categories"|"products"|"vouches"|"homepage">("sellers");
+  const [activeTab, setActiveTab] = useState<"sellers"|"categories"|"products"|"vouches"|"homepage"|"cities">("sellers");
 
   // Category editor state
   const [editingCat, setEditingCat] = useState<Category | null>(null);
@@ -150,10 +155,24 @@ function AdminPage() {
   const [vouchDetail, setVouchDetail] = useState<{ seller_name: string; vouchers: VoucherDetail[] } | null>(null);
   const [vouchDetailLoading, setVouchDetailLoading] = useState(false);
 
+  // Vouch threshold state
+  const [vouchThreshold,      setVouchThreshold]      = useState(3);
+  const [vouchThresholdInput, setVouchThresholdInput] = useState(3);
+  const [thresholdSaving,     setThresholdSaving]     = useState(false);
+
   // Reject dialog state
   const [rejectTarget, setRejectTarget] = useState<{ id: string; name: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectSaving, setRejectSaving] = useState(false);
+
+  // City dialog state
+  const [cityDialogOpen,  setCityDialogOpen]  = useState(false);
+  const [editingCity,     setEditingCity]      = useState<CityRow | null>(null);
+  const [cityName,        setCityName]         = useState("");
+  const [cityState,       setCityState]        = useState("");
+  const [citySlug,        setCitySlug]         = useState("");
+  const [cityIsActive,    setCityIsActive]     = useState(true);
+  const [citySaving,      setCitySaving]       = useState(false);
 
   // ── Resilient per-section loaders. Each runs independently — one failure
   //    no longer blocks the rest of the dashboard.
@@ -270,6 +289,40 @@ function AdminPage() {
     }
   }, []);
 
+  const loadVouchThreshold = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "vouch_threshold")
+        .maybeSingle()
+        .abortSignal(ABORT());
+      const parsed = parseInt(data?.value ?? "3", 10);
+      const val = isNaN(parsed) ? 3 : parsed;
+      setVouchThreshold(val);
+      setVouchThresholdInput(val);
+    } catch (err) {
+      console.warn("[admin] vouch_threshold load failed:", err);
+    }
+  }, []);
+
+  const loadCities = useCallback(async () => {
+    setCitiesState("loading");
+    try {
+      const { data, error } = await supabase
+        .from("cities_of_business")
+        .select("id, name, state, slug, is_active, sort_order")
+        .order("sort_order")
+        .abortSignal(ABORT());
+      if (error) throw error;
+      setCities((data ?? []) as CityRow[]);
+      setCitiesState("ok");
+    } catch (err) {
+      console.warn("[admin] cities failed:", err);
+      setCitiesState("error");
+    }
+  }, []);
+
   // Fire all loaders independently once auth resolves.
   useEffect(() => {
     if (!allowed) return;
@@ -279,14 +332,16 @@ function AdminPage() {
     void loadSections();
     void loadStats();
     void loadVouches();
-  }, [allowed, loadSellers, loadCategories, loadProducts, loadSections, loadStats, loadVouches]);
+    void loadVouchThreshold();
+    void loadCities();
+  }, [allowed, loadSellers, loadCategories, loadProducts, loadSections, loadStats, loadVouches, loadVouchThreshold, loadCities]);
 
   // Convenience: reload affected sections after mutations.
   const loadAll = useCallback(async () => {
     await Promise.allSettled([
-      loadSellers(), loadCategories(), loadProducts(), loadSections(), loadStats(), loadVouches(),
+      loadSellers(), loadCategories(), loadProducts(), loadSections(), loadStats(), loadVouches(), loadCities(),
     ]);
-  }, [loadSellers, loadCategories, loadProducts, loadSections, loadStats, loadVouches]);
+  }, [loadSellers, loadCategories, loadProducts, loadSections, loadStats, loadVouches, loadCities]);
 
 
   // ── Seller verification approval ──
@@ -506,7 +561,91 @@ function AdminPage() {
     setVouchDetailLoading(false);
   };
 
-  // Auth gate. !isReady → still resolving (skeleton). Not signed in or not admin → redirect handled in useEffect; render nothing in the meantime.
+  // ── Vouch threshold ──
+  const saveVouchThreshold = async () => {
+    const val = Math.min(20, Math.max(1, vouchThresholdInput));
+    setThresholdSaving(true);
+    const { error } = await supabase
+      .from("admin_settings")
+      .upsert({ key: "vouch_threshold", value: val.toString() }, { onConflict: "key" });
+    setThresholdSaving(false);
+    if (error) { toast.error(error.message); return; }
+    setVouchThreshold(val);
+    setVouchThresholdInput(val);
+    toast.success("Threshold saved");
+  };
+
+  // ── Cities ──
+  const openNewCity = () => {
+    setEditingCity(null);
+    setCityName(""); setCityState(""); setCitySlug(""); setCityIsActive(true);
+    setCityDialogOpen(true);
+  };
+
+  const openEditCity = (c: CityRow) => {
+    setEditingCity(c);
+    setCityName(c.name); setCityState(c.state); setCitySlug(c.slug); setCityIsActive(c.is_active);
+    setCityDialogOpen(true);
+  };
+
+  const saveCity = async () => {
+    if (!cityName.trim()) { toast.error("City name required"); return; }
+    if (!cityState.trim()) { toast.error("State required"); return; }
+    const slug = citySlug.trim() || slugify(cityName);
+    setCitySaving(true);
+    if (editingCity) {
+      const { error } = await supabase
+        .from("cities_of_business")
+        .update({ name: cityName.trim(), state: cityState.trim(), slug, is_active: cityIsActive })
+        .eq("id", editingCity.id);
+      if (error) { toast.error(error.message); setCitySaving(false); return; }
+      toast.success("City updated");
+      setCities((prev) => prev.map((c) =>
+        c.id === editingCity.id ? { ...c, name: cityName.trim(), state: cityState.trim(), slug, is_active: cityIsActive } : c
+      ));
+    } else {
+      const maxOrder = Math.max(0, ...cities.map((c) => c.sort_order));
+      const { error } = await supabase
+        .from("cities_of_business")
+        .insert({ name: cityName.trim(), state: cityState.trim(), slug, is_active: cityIsActive, sort_order: maxOrder + 1 });
+      if (error) { toast.error(error.message); setCitySaving(false); return; }
+      toast.success("City added");
+      await loadCities();
+    }
+    setCitySaving(false);
+    setCityDialogOpen(false);
+  };
+
+  const deleteCity = async (id: string, name: string) => {
+    if (!confirm(`Delete city "${name}"? Sellers using it won't be affected.`)) return;
+    const { error } = await supabase.from("cities_of_business").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("City deleted");
+    setCities((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const toggleCityActive = async (id: string, current: boolean) => {
+    const { error } = await supabase.from("cities_of_business").update({ is_active: !current }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    setCities((prev) => prev.map((c) => c.id === id ? { ...c, is_active: !current } : c));
+    toast.success(!current ? "City activated" : "City deactivated");
+  };
+
+  const moveCity = async (id: string, dir: "up" | "down") => {
+    const idx = cities.findIndex((c) => c.id === id);
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= cities.length) return;
+    const updated = [...cities];
+    [updated[idx].sort_order, updated[swapIdx].sort_order] = [updated[swapIdx].sort_order, updated[idx].sort_order];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    setCities([...updated]);
+    await Promise.all([
+      supabase.from("cities_of_business").update({ sort_order: updated[idx].sort_order }).eq("id", updated[idx].id),
+      supabase.from("cities_of_business").update({ sort_order: updated[swapIdx].sort_order }).eq("id", updated[swapIdx].id),
+    ]);
+  };
+
+  // Auth gate.
   if (!isReady) return <PageLoader label="Loading admin…" />;
   if (!allowed) return <PageLoader label="Checking access…" />;
 
@@ -555,12 +694,13 @@ function AdminPage() {
 
         {/* Tab nav */}
         <div className="mt-8 flex flex-wrap gap-2">
-          {(["sellers","categories","products","vouches","homepage"] as const).map((t) => (
+          {(["sellers","categories","products","vouches","homepage","cities"] as const).map((t) => (
             <button key={t} onClick={() => setActiveTab(t)} className={tabCls(t)}>
               {t === "sellers"    ? `Sellers ${pendingSellers.length > 0 ? `(${pendingSellers.length} pending)` : ""}` :
                t === "categories" ? "Categories" :
                t === "products"   ? "Products" :
-               t === "vouches"    ? "Vouches" : "Homepage"}
+               t === "vouches"    ? "Vouches" :
+               t === "homepage"   ? "Homepage" : "Cities"}
             </button>
           ))}
         </div>
@@ -767,9 +907,43 @@ function AdminPage() {
         {/* ── Vouches tab ── */}
         {activeTab === "vouches" && (
           <section className="mt-6">
+            {/* ── Auto-verification threshold card ── */}
+            <div className="mb-6 rounded-2xl border border-border-warm bg-card p-4 shadow-warm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">Auto-verification threshold</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Sellers are automatically verified when they reach this many vouches
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Current value: <span className="font-semibold text-foreground">{vouchThreshold}</span>
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={vouchThresholdInput}
+                    onChange={(e) => setVouchThresholdInput(parseInt(e.target.value, 10) || 1)}
+                    className="w-20 rounded-xl text-center"
+                  />
+                  <Button
+                    onClick={saveVouchThreshold}
+                    disabled={thresholdSaving || vouchThresholdInput === vouchThreshold}
+                    size="sm"
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    {thresholdSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    <span className="ml-1">Save</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             <h2 className="mb-2 font-serif text-xl">Vouch Analytics</h2>
             <p className="mb-4 text-xs text-muted-foreground">
-              Badge is earned after 5 vouches from verified sellers. Click a row to see who vouched.
+              Badge is earned after {vouchThreshold} vouches from verified sellers. Click a row to see who vouched.
             </p>
             {vouchesState === "loading" && <SectionSkeleton />}
             {vouchesState === "error" && <SectionError label="vouches" onRetry={loadVouches} />}
@@ -792,7 +966,7 @@ function AdminPage() {
                           <p className="font-medium truncate">{v.seller_name}</p>
                           <p className="text-xs text-muted-foreground">{v.vouch_count} vouch{v.vouch_count !== 1 ? "es" : ""} · click to see who</p>
                         </div>
-                        {v.vouch_count >= 5 && (
+                        {v.vouch_count >= vouchThreshold && (
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 text-amber-500 shrink-0">
                             <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0 1 12 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 0 1 3.498 1.307 4.491 4.491 0 0 1 1.307 3.497A4.49 4.49 0 0 1 21.75 12a4.49 4.49 0 0 1-1.549 3.397 4.491 4.491 0 0 1-1.307 3.497 4.491 4.491 0 0 1-3.497 1.307A4.49 4.49 0 0 1 12 21.75a4.49 4.49 0 0 1-3.397-1.549 4.49 4.49 0 0 1-3.498-1.306 4.491 4.491 0 0 1-1.307-3.498A4.49 4.49 0 0 1 2.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 0 1 1.307-3.497 4.49 4.49 0 0 1 3.497-1.307Zm7.007 6.387a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
                           </svg>
@@ -834,6 +1008,63 @@ function AdminPage() {
                         </button>
                         <button onClick={() => openEditSection(s)} className="rounded p-1 hover:bg-muted">
                           <Pencil className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── Cities tab ── */}
+        {activeTab === "cities" && (
+          <section className="mt-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-serif text-xl">Cities ({cities.length})</h2>
+              <Button onClick={openNewCity} size="sm" className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+                <Plus className="mr-1 h-4 w-4" /> Add city
+              </Button>
+            </div>
+            <p className="mb-4 text-xs text-muted-foreground">Manage the cities available for sellers to choose from during registration.</p>
+            {citiesState === "loading" && <SectionSkeleton />}
+            {citiesState === "error" && <SectionError label="cities" onRetry={loadCities} />}
+            {citiesState === "ok" && (
+              <div className="space-y-2">
+                {cities.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No cities yet. Add one to get started.</p>
+                )}
+                {cities.map((c, idx) => (
+                  <div key={c.id} className={`flex items-center gap-3 rounded-xl border bg-card p-3 shadow-warm ${!c.is_active ? "opacity-60" : ""}`}>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage/10">
+                      <MapPin className="h-4 w-4 text-sage-deep" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{c.name}</p>
+                        {!c.is_active && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{c.state} · /{c.slug}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={c.is_active}
+                        onCheckedChange={() => toggleCityActive(c.id, c.is_active)}
+                        aria-label={c.is_active ? "Deactivate city" : "Activate city"}
+                      />
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => moveCity(c.id, "up")} disabled={idx === 0}
+                          className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                        <button onClick={() => moveCity(c.id, "down")} disabled={idx === cities.length - 1}
+                          className="rounded p-1 hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                        <button onClick={() => openEditCity(c)} className="rounded p-1 hover:bg-muted">
+                          <Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => deleteCity(c.id, c.name)} className="rounded p-1 text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                   </div>
@@ -950,6 +1181,64 @@ function AdminPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── City add/edit dialog ── */}
+      <Dialog open={cityDialogOpen} onOpenChange={(o) => !o && setCityDialogOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCity ? "Edit city" : "Add city"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>City name *</Label>
+              <Input
+                value={cityName}
+                onChange={(e) => {
+                  setCityName(e.target.value);
+                  if (!editingCity) setCitySlug(slugify(e.target.value));
+                }}
+                placeholder="e.g. Kano"
+              />
+            </div>
+            <div>
+              <Label>State *</Label>
+              <Input
+                value={cityState}
+                onChange={(e) => setCityState(e.target.value)}
+                placeholder="e.g. Kano State"
+              />
+            </div>
+            <div>
+              <Label>Slug</Label>
+              <p className="mb-1 text-xs text-muted-foreground">Auto-generated from name — edit if needed</p>
+              <Input
+                value={citySlug}
+                onChange={(e) => setCitySlug(e.target.value)}
+                placeholder="e.g. kano"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-border-warm bg-muted/30 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Active</p>
+                <p className="text-xs text-muted-foreground">Visible to sellers during registration</p>
+              </div>
+              <Switch
+                checked={cityIsActive}
+                onCheckedChange={setCityIsActive}
+              />
+            </div>
+            <Button
+              onClick={saveCity}
+              disabled={citySaving}
+              className="w-full rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {citySaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : editingCity ? "Save changes" : "Add city"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <BottomNav />
     </div>
   );
 }
