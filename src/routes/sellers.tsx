@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Users } from "lucide-react";
-import { NIGERIAN_CITIES } from "@/lib/categories";
 import { BackButton } from "@/components/BackButton";
 import { useCity } from "@/lib/cityContext";
 
@@ -17,7 +16,7 @@ export const Route = createFileRoute("/sellers")({ component: SellersPage });
 
 function SellersPage() {
   const [search, setSearch] = useState("");
-  const { selectedCity: globalCity } = useCity();
+  const { selectedCity: globalCity, activeCities } = useCity();
   const [city, setCity] = useState(globalCity !== "All" ? globalCity : "All cities");
   const [category, setCategory] = useState("All categories");
 
@@ -93,7 +92,7 @@ function SellersPage() {
             <SelectTrigger className="w-full rounded-full sm:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="All cities">All cities</SelectItem>
-              {NIGERIAN_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {activeCities.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={category} onValueChange={setCategory}>
