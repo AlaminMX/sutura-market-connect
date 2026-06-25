@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ImageUploader } from "@/components/ImageUploader";
 import { toast } from "sonner";
 import { slugify, validateNigerianPhone } from "@/lib/whatsapp";
+import { useCity } from "@/lib/cityContext";
 import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Clock, Home, Check, Compass, MessageCircle } from "lucide-react";
 
 export const Route = createFileRoute("/register")({ component: Register });
@@ -83,8 +84,11 @@ function Register() {
   const [businessName, setBusinessName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [city, setCity] = useState("");
+  const [cityId, setCityId] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
+
+  const { activeCities, citiesLoading } = useCity();
 
   // Step 2
   const [profileUrl, setProfileUrl] = useState<string | null>(null);
@@ -192,11 +196,9 @@ function Register() {
       if (!clash) break;
       slug = `${baseSlug}-${Math.floor(Math.random() * 999)}`;
     }
-    const { data: cityRow } = await supabase
-      .from("cities_of_business").select("id").ilike("name", city).maybeSingle();
     const { data, error } = await supabase.from("sellers").insert({
       user_id: uid!, name, business_name: businessName.trim(), slug,
-      whatsapp_number: whatsapp, city, city_id: cityRow?.id ?? null, category, bio,
+      whatsapp_number: whatsapp, city, city_id: cityId, category, bio,
       verification_status: "pending",
       is_blocked: false,
     }).select().single();
@@ -323,26 +325,29 @@ function Register() {
                 <FieldError msg={errors.whatsapp} />
               </div>
 
-              {/* City — fixed list of Nigerian state capitals by geopolitical zone */}
+              {/* City — sourced live from the cities the admin has added & activated */}
               <div>
                 <Label>City<Req /></Label>
-                <Select value={city} onValueChange={setCity}>
+                <Select
+                  value={city}
+                  onValueChange={(v) => {
+                    setCity(v);
+                    setCityId(activeCities.find((c) => c.name === v)?.id ?? null);
+                  }}
+                  disabled={citiesLoading}
+                >
                   <SelectTrigger className={errors.city ? "border-destructive" : ""}>
-                    <SelectValue placeholder="Choose your city" />
+                    <SelectValue placeholder={citiesLoading ? "Loading cities…" : "Choose your city"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(NIGERIA_ZONE_CITIES).map(([zone, cities]) => (
-                      <div key={zone}>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                          {zone}
-                        </div>
-                        {cities.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </div>
+                    {activeCities.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {!citiesLoading && activeCities.length === 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">No cities are open for registration yet — check back soon.</p>
+                )}
                 <FieldError msg={errors.city} />
               </div>
 
