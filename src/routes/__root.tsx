@@ -119,7 +119,7 @@ function RootComponent() {
         <SellerProfileProvider>
           <LangProvider>
             <CityProvider>
-              <main>
+              <main className="bg-background">
                 <Outlet />
               </main>
               <BottomNav />
