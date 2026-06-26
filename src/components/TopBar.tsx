@@ -1,21 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Bookmark, LogIn, MapPin, Menu } from "lucide-react";
+import { Bookmark, LogIn, Menu } from "lucide-react";
 import { useWishlistCount } from "@/lib/wishlist";
-import { useCity } from "@/lib/cityContext";
 import { useAuth } from "@/lib/authContext";
 import { useSellerProfile } from "@/lib/sellerProfile";
 import { NavSidebar } from "@/components/NavSidebar";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 
 export function TopBar() {
   const count = useWishlistCount();
   const { user, isReady } = useAuth();
   const { seller } = useSellerProfile();
   const isSignedIn = isReady ? !!user : null;
-  const { selectedCity, setSelectedCity, activeCities } = useCity();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -36,26 +31,6 @@ export function TopBar() {
             </span>
           </div>
         </Link>
-
-        <div className="flex flex-1 items-center justify-center">
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger
-              className="h-9 w-auto max-w-[200px] rounded-full border border-border-warm bg-white px-3 text-xs shadow-sm transition hover:border-primary/40 focus:ring-0 [&>svg]:ml-1"
-              aria-label="Select state"
-            >
-              <MapPin className="mr-1 h-3.5 w-3.5 shrink-0 text-primary" />
-              <SelectValue placeholder="All states" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All states</SelectItem>
-              {activeCities.map((c) => (
-                <SelectItem key={c.id} value={c.name}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
         <div className="flex shrink-0 items-center gap-2">
           {isSignedIn === false && (
