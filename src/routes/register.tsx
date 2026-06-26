@@ -21,26 +21,54 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ImageUploader } from "@/components/ImageUploader";
 import { toast } from "sonner";
 import { slugify, validateNigerianPhone } from "@/lib/whatsapp";
-import { useCity } from "@/lib/cityContext";
 import { ChevronLeft, ChevronRight, Loader2, AlertCircle, Clock, Home, Check, Compass, MessageCircle } from "lucide-react";
 
 export const Route = createFileRoute("/register")({ component: Register });
 
 // ---------------------------------------------------------------------------
-// Nigeria — 6 Geopolitical Zones + FCT (state capitals / major cities)
+// Nigeria — All 36 states + FCT with capitals and major cities
 // ---------------------------------------------------------------------------
-export const NIGERIA_ZONE_CITIES: Record<string, string[]> = {
-  "FCT": ["Abuja"],
-  "North Central": ["Ilorin", "Lafia", "Lokoja", "Minna", "Jos"],
-  "North East": ["Bauchi", "Damaturu", "Gombe", "Jalingo", "Maiduguri", "Yola"],
-  "North West": ["Birnin Kebbi", "Dutse", "Gusau", "Kaduna", "Kano", "Katsina", "Sokoto"],
-  "South East": ["Abakaliki", "Awka", "Enugu", "Owerri", "Umuahia"],
-  "South South": ["Asaba", "Benin City", "Calabar", "Port Harcourt", "Uyo", "Yenagoa"],
-  "South West": ["Ado Ekiti", "Abeokuta", "Akure", "Ibadan", "Lagos", "Osogbo"],
+export const NIGERIA_STATE_CITIES: Record<string, string[]> = {
+  "Abia":          ["Umuahia", "Aba", "Ohafia", "Arochukwu"],
+  "Adamawa":       ["Yola", "Mubi", "Jimeta", "Ganye", "Numan"],
+  "Akwa Ibom":    ["Uyo", "Eket", "Ikot Ekpene", "Abak", "Oron"],
+  "Anambra":       ["Awka", "Onitsha", "Nnewi", "Ekwulobia", "Aguata"],
+  "Bauchi":        ["Bauchi", "Azare", "Misau", "Dass", "Tafawa Balewa"],
+  "Bayelsa":       ["Yenagoa", "Ogbia", "Sagbama", "Brass", "Ekeremor"],
+  "Benue":         ["Makurdi", "Gboko", "Otukpo", "Katsina-Ala", "Vandeikya"],
+  "Borno":         ["Maiduguri", "Biu", "Bama", "Gwoza", "Dikwa"],
+  "Cross River":   ["Calabar", "Ogoja", "Ikom", "Obudu", "Akamkpa"],
+  "Delta":         ["Asaba", "Warri", "Ughelli", "Sapele", "Agbor"],
+  "Ebonyi":        ["Abakaliki", "Afikpo", "Onueke", "Ezza-Ohu", "Ishielu"],
+  "Edo":           ["Benin City", "Ekpoma", "Uromi", "Auchi", "Igueben"],
+  "Ekiti":         ["Ado Ekiti", "Ikere Ekiti", "Ilawe Ekiti", "Ijero Ekiti", "Efon Alaaye"],
+  "Enugu":         ["Enugu", "Nsukka", "Agbani", "Oji River", "Udi"],
+  "FCT":           ["Abuja", "Gwagwalada", "Kuje", "Kubwa", "Lugbe"],
+  "Gombe":         ["Gombe", "Kumo", "Kaltungo", "Bajoga", "Billiri"],
+  "Imo":           ["Owerri", "Orlu", "Okigwe", "Oguta", "Mbaise"],
+  "Jigawa":        ["Dutse", "Hadejia", "Birnin Kudu", "Kazaure", "Gumel"],
+  "Kaduna":        ["Kaduna", "Zaria", "Kafanchan", "Saminaka", "Kachia"],
+  "Kano":          ["Kano", "Wudil", "Bichi", "Rano", "Gwarzo"],
+  "Katsina":       ["Katsina", "Funtua", "Daura", "Malumfashi", "Dutsin Ma"],
+  "Kebbi":         ["Birnin Kebbi", "Argungu", "Yauri", "Zuru", "Gwandu"],
+  "Kogi":          ["Lokoja", "Okene", "Idah", "Kabba", "Ankpa"],
+  "Kwara":         ["Ilorin", "Offa", "Omu-Aran", "Pategi", "Lafiagi"],
+  "Lagos":         ["Lagos Island", "Ikeja", "Lekki", "Surulere", "Badagry", "Epe", "Ikorodu"],
+  "Nasarawa":      ["Lafia", "Keffi", "Nasarawa", "Akwanga", "Wamba"],
+  "Niger":         ["Minna", "Bida", "Kontagora", "Suleja", "Lapai"],
+  "Ogun":          ["Abeokuta", "Sagamu", "Ijebu Ode", "Ilaro", "Ota"],
+  "Ondo":          ["Akure", "Ondo", "Owo", "Ikare", "Okitipupa"],
+  "Osun":          ["Osogbo", "Ile-Ife", "Ilesa", "Ede", "Iwo"],
+  "Oyo":           ["Ibadan", "Ogbomosho", "Oyo", "Iseyin", "Saki"],
+  "Plateau":       ["Jos", "Bukuru", "Pankshin", "Shendam", "Barkin Ladi"],
+  "Rivers":        ["Port Harcourt", "Obio/Akpor", "Eleme", "Ahoada", "Bonny"],
+  "Sokoto":        ["Sokoto", "Wurno", "Wamako", "Bodinga", "Tambuwal"],
+  "Taraba":        ["Jalingo", "Wukari", "Bali", "Gembu", "Gashaka"],
+  "Yobe":          ["Damaturu", "Gashua", "Nguru", "Potiskum", "Geidam"],
+  "Zamfara":       ["Gusau", "Kaura Namoda", "Talata Mafara", "Anka", "Bungudu"],
 };
 
-// Flat sorted list for quick validation
-export const ALL_ZONE_CITIES: string[] = Object.values(NIGERIA_ZONE_CITIES).flat().sort((a, b) => a.localeCompare(b));
+export const NIGERIA_STATES = Object.keys(NIGERIA_STATE_CITIES).sort((a, b) => a.localeCompare(b));
 
 // ---------------------------------------------------------------------------
 
@@ -88,7 +116,7 @@ function Register() {
   const [category, setCategory] = useState("");
   const [bio, setBio] = useState("");
 
-  const { activeCities, citiesLoading } = useCity();
+  const [selectedState, setSelectedState] = useState("");
 
   // Step 2
   const [profileUrl, setProfileUrl] = useState<string | null>(null);
@@ -325,31 +353,50 @@ function Register() {
                 <FieldError msg={errors.whatsapp} />
               </div>
 
-              {/* City — sourced live from the cities the admin has added & activated */}
+              {/* State → City two-level selector */}
               <div>
-                <Label>City<Req /></Label>
+                <Label>State<Req /></Label>
                 <Select
-                  value={city}
+                  value={selectedState}
                   onValueChange={(v) => {
-                    setCity(v);
-                    setCityId(activeCities.find((c) => c.name === v)?.id ?? null);
+                    setSelectedState(v);
+                    setCity("");
+                    setCityId(null);
                   }}
-                  disabled={citiesLoading}
                 >
-                  <SelectTrigger className={errors.city ? "border-destructive" : ""}>
-                    <SelectValue placeholder={citiesLoading ? "Loading cities…" : "Choose your city"} />
+                  <SelectTrigger className={errors.city && !selectedState ? "border-destructive" : ""}>
+                    <SelectValue placeholder="Choose your state" />
                   </SelectTrigger>
                   <SelectContent>
-                    {activeCities.map((c) => (
-                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                    {NIGERIA_STATES.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {!citiesLoading && activeCities.length === 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">No cities are open for registration yet — check back soon.</p>
-                )}
-                <FieldError msg={errors.city} />
               </div>
+
+              {selectedState && (
+                <div>
+                  <Label>City<Req /></Label>
+                  <Select
+                    value={city}
+                    onValueChange={(v) => {
+                      setCity(v);
+                      setCityId(null);
+                    }}
+                  >
+                    <SelectTrigger className={errors.city ? "border-destructive" : ""}>
+                      <SelectValue placeholder="Choose your city" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(NIGERIA_STATE_CITIES[selectedState] ?? []).map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FieldError msg={errors.city} />
+                </div>
+              )}
 
               <div>
                 <Label>Category<Req /></Label>
